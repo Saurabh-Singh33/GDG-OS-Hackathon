@@ -2,7 +2,7 @@ import { useState } from 'react';
 import StreamingOutput from './StreamingOutput.jsx';
 
 const SYSTEM_PROMPT =
-  'You are a Git mentor for absolute beginners. Answer in 3 sentences max, then give the exact command they need.';
+  'You are an expert Git mentor. Explain the exact solution with real Git commands and clear, descriptive stages (e.g. "Stage files with git add", "Commit changes with git commit", "Push branch with git push"). If showing a workflow or flowchart, NEVER use generic dummy placeholders like "Step 1" or "Step 2" — always describe the actual action and command.';
 
 export default function GitHelper() {
   const [question, setQuestion] = useState('');

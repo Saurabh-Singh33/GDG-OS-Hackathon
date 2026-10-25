@@ -475,20 +475,19 @@ export default function App() {
   };
 
   const MERMAID_INSTRUCTION =
-    'Only if the user explicitly asks for a diagram or flowchart, include a valid Mermaid.js diagram inside a ```mermaid code block with "graph TD" on its own line and quote all node labels (e.g. A["Step 1"] --> B["Step 2"]). Never include a mermaid diagram unless explicitly requested.';
+    'When generating a Mermaid diagram (using ```mermaid with "graph TD"): ALWAYS use meaningful, concrete action names describing the exact developer step (for example: A["1. Create Branch: git checkout -b feat"] --> B["2. Make Code Changes & Test"] --> C["3. Stage: git add ."] --> D["4. Commit: git commit -m \'feat: ...\'"] --> E["5. Push: git push -u origin feat"] --> F["6. Open Pull Request"]). CRITICAL: NEVER use generic placeholders like "Step 1", "Step 2", "Process", or "Action". Node labels MUST clearly explain the real Git or open-source action and command. Always quote labels inside brackets (e.g. A["Action Name"]).';
 
   const getSystemPrompt = (tab = activeTab) => {
     if (tab === 'chat') {
-      return `You are an encouraging, friendly open-source mentor. Answer beginner questions clearly, warmly, and accurately in simple terms. You can answer in any language requested (English, Hindi, etc.). ${MERMAID_INSTRUCTION}`;
+      return `You are an encouraging, expert open-source mentor. Answer beginner questions clearly, warmly, and accurately with real examples and exact shell commands. When explaining workflows, describe real developer actions—never use generic placeholders like "Step 1" or "Step 2". You can answer in any language requested (English, Hindi, etc.). ${MERMAID_INSTRUCTION}`;
     }
     if (tab === 'git') {
-      return settings.mentorTone === 'concise'
-        ? `You are a terse Git mentor. Answer in 2 sentences max, then give the exact command needed. ${MERMAID_INSTRUCTION}`
-        : `You are a Git mentor for absolute beginners. Answer in 3 sentences max, then give the exact command they need. ${MERMAID_INSTRUCTION}`;
+      return `You are an expert Git mentor for open-source contributors. Explain the exact solution with real Git commands and clear, descriptive stages (e.g. "Stage files with git add", "Commit changes with git commit", "Push branch with git push"). Never use generic dummy placeholders like "Step 1" or "Step 2". Always show the real developer commands. ${MERMAID_INSTRUCTION}`;
     }
-    return settings.mentorTone === 'concise'
-      ? `You are a direct open-source mentor. Give concise bullet points and direct commands. ${MERMAID_INSTRUCTION}`
-      : `You are a patient open-source mentor. Explain things for a complete beginner. Never assume they know Git. Be concise and use bullet points. ${MERMAID_INSTRUCTION}`;
+    if (tab === 'issue') {
+      return `You are an open-source triage mentor. Break down the issue into actionable engineering tasks with concrete file names, reproduction steps, and test commands. Never use generic placeholder steps like "Step 1" or "Step 2". ${MERMAID_INSTRUCTION}`;
+    }
+    return `You are a patient open-source mentor. Explain things for beginners with concrete, specific instructions. Outline the exact setup commands and contribution workflow. Never use generic placeholders like "Step 1" or "Step 2" — always state the actual action. ${MERMAID_INSTRUCTION}`;
   };
 
   const handleSpeakMessage = useCallback((text, id) => {
@@ -804,8 +803,8 @@ export default function App() {
           .map((m) => `${m.role === 'user' ? 'User' : 'Mentor'}: ${m.text}`)
           .join('\n\n');
         finalPrompt = contextStr
-          ? `Conversation history:\n${contextStr}\n\nUser asks: "${trimmed}"\nAnswer with the exact Git command needed.`
-          : trimmed;
+          ? `Conversation history:\n${contextStr}\n\nUser asks: "${trimmed}"\nAnswer with clear, step-by-step guidance and exact shell commands. If providing a workflow or flowchart, describe real, concrete Git steps (never use generic "Step 1", "Step 2" placeholders).`
+          : `${trimmed}\n\n(Explain clearly with exact Git commands. If showing a process or flowchart, use meaningful, descriptive action labels rather than generic "Step 1" or "Step 2" placeholders.)`;
         sysPrompt = getSystemPrompt('git');
       } else {
         // 'chat' mode: General open-ended mentor conversation with multi-turn memory

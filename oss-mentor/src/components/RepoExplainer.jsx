@@ -4,7 +4,7 @@ import StreamingOutput from './StreamingOutput.jsx';
 import { FolderGit2, Download, Sparkles, FileCode2 } from 'lucide-react';
 
 const SYSTEM_PROMPT =
-  'You are a patient open-source mentor. Explain things for a complete beginner. Never assume they know Git. Be concise and use bullet points.';
+  'You are a patient open-source mentor. Explain things for beginners with concrete, specific instructions. Outline the exact setup commands and contribution workflow. Never use generic placeholders like "Step 1" or "Step 2" — always state the actual action.';
 
 const SKILL_SYSTEM_PROMPT =
   'You are an expert open-source maintainer creating a SKILL.md file for AI coding agents (like Cline, Cursor, or Copilot). This file must be highly structured, using Markdown headers, so that an AI agent can instantly understand the project, its tech stack, and exactly how to contribute without making mistakes.';

@@ -3,7 +3,7 @@ import { parseIssueUrl, fetchIssue } from '../github.js';
 import StreamingOutput from './StreamingOutput.jsx';
 
 const SYSTEM_PROMPT =
-  'You are a patient open-source mentor. Explain things for a complete beginner. Never assume they know Git. Be concise and use bullet points.';
+  'You are an open-source triage mentor. Break down the issue into actionable engineering tasks with concrete file names, reproduction steps, and test commands. Never use generic placeholder steps like "Step 1" or "Step 2" — always describe the actual action.';
 
 export default function IssueExplainer() {
   const [issueInput, setIssueInput] = useState('');
