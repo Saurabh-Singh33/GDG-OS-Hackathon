@@ -1,16 +1,23 @@
 import { useState, useEffect, useRef } from 'react';
 import ReactMarkdown from 'react-markdown';
+import { Copy, Check } from 'lucide-react';
 import { streamOllama } from '../ollama.js';
 
 /**
- * StreamingOutput component
+ * StreamingOutput component (Dark UI SaaS Theme)
  *
  * Props:
  * - prompt (string): The user prompt to send
  * - system (string): Optional system message
+ * - model (string): Optional Ollama model name (default: 'gemma:2b')
  * - onDone (function): Optional callback invoked when streaming completes
  */
-export default function StreamingOutput({ prompt, system, onDone }) {
+export default function StreamingOutput({
+  prompt,
+  system,
+  model = 'gemma:2b',
+  onDone,
+}) {
   const [output, setOutput] = useState('');
   const [isStreaming, setIsStreaming] = useState(false);
   const [error, setError] = useState(null);
@@ -37,7 +44,7 @@ export default function StreamingOutput({ prompt, system, onDone }) {
     async function streamResponse() {
       let accumulated = '';
       try {
-        const stream = streamOllama('gemma:2b', prompt, system);
+        const stream = streamOllama(model || 'gemma:2b', prompt, system);
         for await (const chunk of stream) {
           if (isCancelled) {
             break;
@@ -65,7 +72,7 @@ export default function StreamingOutput({ prompt, system, onDone }) {
     return () => {
       isCancelled = true;
     };
-  }, [prompt, system]);
+  }, [prompt, system, model]);
 
   const handleCopy = async () => {
     if (!output) return;
@@ -80,9 +87,12 @@ export default function StreamingOutput({ prompt, system, onDone }) {
 
   if (error) {
     return (
-      <div className="rounded-xl border border-red-300 bg-red-50 p-4 text-red-700 text-sm text-left">
-        <p className="font-semibold mb-1">Streaming Error</p>
-        <p>{error}</p>
+      <div className="w-full max-w-3xl mt-4 rounded-2xl border border-red-800/60 bg-red-950/40 p-4 text-red-300 text-sm text-left shadow-lg">
+        <div className="flex items-center gap-2 font-semibold mb-1 text-red-200">
+          <span className="w-2 h-2 rounded-full bg-red-500" />
+          <span>Error</span>
+        </div>
+        <p className="text-red-300/90">{error}</p>
       </div>
     );
   }
@@ -92,56 +102,56 @@ export default function StreamingOutput({ prompt, system, onDone }) {
   }
 
   return (
-    <div className="space-y-3">
-      <div className="bg-white border border-gray-200 rounded-xl p-4 text-left max-w-none shadow-sm">
+    <div className="w-full max-w-3xl mt-4 space-y-3">
+      <div className="bg-[#0f172a] border border-[#1e293b] rounded-2xl p-6 text-left shadow-xl w-full">
+        {/* Thinking indicator before any text arrives */}
         {isStreaming && !output && (
-          <div className="flex items-center space-x-2 text-gray-500 text-sm py-2">
-            <svg
-              className="animate-spin h-4 w-4 text-gray-500"
-              xmlns="http://www.w3.org/2000/svg"
-              fill="none"
-              viewBox="0 0 24 24"
-            >
-              <circle
-                className="opacity-25"
-                cx="12"
-                cy="12"
-                r="10"
-                stroke="currentColor"
-                strokeWidth="4"
-              />
-              <path
-                className="opacity-75"
-                fill="currentColor"
-                d="M4 12a8 8 0 018-8v8H4z"
-              />
-            </svg>
-            <span>Thinking...</span>
+          <div className="flex items-center space-x-3 text-slate-400 text-sm py-4">
+            <span className="relative flex h-3 w-3">
+              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-blue-400 opacity-75" />
+              <span className="relative inline-flex rounded-full h-3 w-3 bg-blue-500" />
+            </span>
+            <span className="font-medium text-slate-300">
+              Thinking with {model}...
+            </span>
           </div>
         )}
 
+        {/* Markdown Output */}
         {output && (
-          <div className="prose prose-sm max-w-none">
+          <div className="prose prose-invert prose-slate max-w-none prose-dark-markdown">
             <ReactMarkdown>{output}</ReactMarkdown>
           </div>
         )}
 
+        {/* Streaming active indicator when text has begun arriving */}
         {isStreaming && output && (
-          <div className="flex items-center space-x-2 text-gray-400 text-xs mt-3 pt-2 border-t border-gray-100">
-            <span className="inline-block w-2 h-2 rounded-full bg-blue-500 animate-pulse" />
-            <span>Thinking...</span>
+          <div className="flex items-center space-x-2 text-slate-400 text-xs mt-4 pt-3 border-t border-[#1e293b]">
+            <span className="inline-block w-2 h-2 rounded-full bg-blue-400 animate-pulse" />
+            <span>Streaming response from {model}...</span>
           </div>
         )}
       </div>
 
+      {/* Copy button */}
       {output && (
         <div className="flex justify-end">
           <button
             type="button"
             onClick={handleCopy}
-            className="inline-flex items-center px-3 py-1.5 text-xs font-medium text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-lg transition-colors cursor-pointer"
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-slate-300 bg-[#0f172a] hover:bg-[#1e293b] border border-[#1e293b] rounded-xl transition-colors cursor-pointer shadow-xs"
           >
-            {copied ? 'Copied!' : 'Copy answer'}
+            {copied ? (
+              <>
+                <Check className="w-3.5 h-3.5 text-emerald-400" />
+                <span className="text-emerald-400">Copied!</span>
+              </>
+            ) : (
+              <>
+                <Copy className="w-3.5 h-3.5 text-slate-400" />
+                <span>Copy answer</span>
+              </>
+            )}
           </button>
         </div>
       )}

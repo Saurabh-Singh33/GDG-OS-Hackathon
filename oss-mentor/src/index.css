@@ -1,1 +1,102 @@
 @import "tailwindcss";
+
+/* Dark-mode custom styling for Markdown rendered inside .prose */
+.prose-dark-markdown {
+  color: #cbd5e1;
+  font-size: 0.95rem;
+  line-height: 1.7;
+}
+
+.prose-dark-markdown h1,
+.prose-dark-markdown h2,
+.prose-dark-markdown h3,
+.prose-dark-markdown h4 {
+  color: #ffffff;
+  font-weight: 600;
+  margin-top: 1.25rem;
+  margin-bottom: 0.5rem;
+}
+
+.prose-dark-markdown h1 {
+  font-size: 1.5rem;
+}
+
+.prose-dark-markdown h2 {
+  font-size: 1.25rem;
+}
+
+.prose-dark-markdown h3 {
+  font-size: 1.1rem;
+}
+
+.prose-dark-markdown p {
+  margin-top: 0.5rem;
+  margin-bottom: 0.5rem;
+}
+
+.prose-dark-markdown ul {
+  list-style-type: disc;
+  padding-left: 1.5rem;
+  margin-top: 0.5rem;
+  margin-bottom: 0.5rem;
+}
+
+.prose-dark-markdown ol {
+  list-style-type: decimal;
+  padding-left: 1.5rem;
+  margin-top: 0.5rem;
+  margin-bottom: 0.5rem;
+}
+
+.prose-dark-markdown li {
+  margin-top: 0.25rem;
+  margin-bottom: 0.25rem;
+}
+
+.prose-dark-markdown pre {
+  background-color: #1e293b;
+  border: 1px solid #334155;
+  border-radius: 0.75rem;
+  padding: 1rem;
+  overflow-x: auto;
+  margin-top: 0.75rem;
+  margin-bottom: 0.75rem;
+}
+
+.prose-dark-markdown code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 0.85em;
+  color: #93c5fd;
+  background-color: #1e293b;
+  padding: 0.15rem 0.4rem;
+  border-radius: 0.25rem;
+}
+
+.prose-dark-markdown pre code {
+  background-color: transparent;
+  padding: 0;
+  color: #e2e8f0;
+}
+
+.prose-dark-markdown blockquote {
+  border-left: 3px solid #3b82f6;
+  padding-left: 1rem;
+  color: #94a3b8;
+  font-style: italic;
+  margin: 0.75rem 0;
+}
+
+.prose-dark-markdown a {
+  color: #60a5fa;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.prose-dark-markdown a:hover {
+  color: #93c5fd;
+}
+
+.prose-dark-markdown hr {
+  border-color: #1e293b;
+  margin: 1.5rem 0;
+}
