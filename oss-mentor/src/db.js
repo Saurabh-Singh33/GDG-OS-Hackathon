@@ -13,7 +13,7 @@ const LAST_ACTIVE_KEY = 'oss_mentor_last_session';
  * Initializes and returns the IndexedDB instance
  */
 function openDB() {
-  return new Promise((resolve, reject) => {
+  return new Promise((resolve) => {
     if (typeof window === 'undefined' || !window.indexedDB) {
       resolve(null);
       return;
@@ -43,7 +43,6 @@ function openDB() {
 
 /**
  * Saves or updates a session in IndexedDB and localStorage
- * @param {{ id: number|string, type: string, query: string, title: string, answer: string, timestamp: string }} session
  */
 export async function saveSession(session) {
   if (!session || !session.id) return;
@@ -78,24 +77,23 @@ export async function saveSession(session) {
 }
 
 /**
- * Updates only the answer of an existing session
+ * Updates an existing session with arbitrary fields (messages, answer, etc.)
  */
-export async function updateSessionAnswer(id, answer) {
-  if (!id) return;
+export async function updateSession(id, updates) {
+  if (!id || !updates) return;
 
-  // Sync to last active if matching
   try {
     const last = getLastActiveSession();
     if (last && last.id === id) {
-      last.answer = answer;
-      localStorage.setItem(LAST_ACTIVE_KEY, JSON.stringify(last));
+      const merged = { ...last, ...updates };
+      localStorage.setItem(LAST_ACTIVE_KEY, JSON.stringify(merged));
     }
 
     const savedList = localStorage.getItem('recentQueries');
     if (savedList) {
       const list = JSON.parse(savedList);
       const updated = list.map((item) =>
-        item.id === id ? { ...item, answer } : item
+        item.id === id ? { ...item, ...updates } : item
       );
       localStorage.setItem('recentQueries', JSON.stringify(updated));
     }
@@ -114,13 +112,20 @@ export async function updateSessionAnswer(id, answer) {
     req.onsuccess = () => {
       const existing = req.result;
       if (existing) {
-        existing.answer = answer;
-        store.put(existing);
+        const merged = { ...existing, ...updates };
+        store.put(merged);
       }
     };
   } catch (err) {
     console.error('IndexedDB update error:', err);
   }
+}
+
+/**
+ * Updates only the answer of an existing session
+ */
+export async function updateSessionAnswer(id, answer) {
+  return updateSession(id, { answer });
 }
 
 /**
