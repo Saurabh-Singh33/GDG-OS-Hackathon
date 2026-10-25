@@ -1,11 +1,11 @@
 import { useState, useEffect, useRef, useMemo, useCallback, memo } from 'react';
 import {
-  Code2,
-  GitBranch,
+  FolderGit2,
+  GitPullRequest,
   Terminal,
-  MessageCircle,
+  MessageSquareCode,
   Search,
-  ArrowRight,
+  SendHorizontal,
   RotateCcw,
   AlertCircle,
   Settings,
@@ -13,6 +13,7 @@ import {
   Trash2,
   Compass,
   Sparkles,
+  BrainCircuit,
   Plus,
   X,
   Sun,
@@ -21,9 +22,18 @@ import {
   Check,
   Volume2,
   VolumeX,
+  Download,
+  FileCode2,
 } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
-import { parseRepoUrl, fetchReadme, fetchTree, parseIssueUrl, fetchIssue } from './github.js';
+import {
+  parseRepoUrl,
+  fetchReadme,
+  fetchTree,
+  fetchContributing,
+  parseIssueUrl,
+  fetchIssue,
+} from './github.js';
 import { streamOllama } from './ollama.js';
 import SettingsModal from './components/SettingsModal.jsx';
 import MermaidDiagram from './components/MermaidDiagram.jsx';
@@ -46,9 +56,9 @@ const DEFAULT_SETTINGS = {
 };
 
 const NAV_ITEMS = [
-  { id: 'chat', label: 'Mentor Chat', icon: MessageCircle },
-  { id: 'repo', label: 'Repo Explainer', icon: Code2 },
-  { id: 'issue', label: 'Issue Mentor', icon: GitBranch },
+  { id: 'chat', label: 'Mentor Chat', icon: MessageSquareCode },
+  { id: 'repo', label: 'Repo Explainer', icon: FolderGit2 },
+  { id: 'issue', label: 'Issue Mentor', icon: GitPullRequest },
   { id: 'git', label: 'Git Helper', icon: Terminal },
 ];
 
@@ -71,11 +81,32 @@ const ChatMessageItem = memo(function ChatMessageItem({
   onSpeak,
   onCopy,
 }) {
+  const isSkillDocument = Boolean(
+    msg.text &&
+      (msg.text.includes('Agent Skill Guide') ||
+        msg.text.includes('SKILL.md') ||
+        msg.text.includes('## 1. Project Overview & Architecture') ||
+        msg.isSkill)
+  );
+
+  const handleDownloadSkillMd = (text) => {
+    if (!text) return;
+    const blob = new Blob([text], { type: 'text/markdown;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = 'SKILL.md';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+  };
+
   if (msg.role === 'user') {
     return (
-      <div className="w-full max-w-3xl mb-6 flex justify-end items-end gap-2.5">
-        <div className="flex flex-col items-end max-w-xl">
-          <div className="bg-gradient-to-br from-indigo-600 to-indigo-700 text-white rounded-2xl rounded-tr-sm px-4 py-3 text-xs sm:text-sm text-left shadow-sm shadow-indigo-500/10 leading-relaxed font-normal">
+      <div className="w-full mb-6 flex justify-end items-end gap-3 px-2 sm:px-4 lg:px-6">
+        <div className="flex flex-col items-end max-w-2xl lg:max-w-3xl xl:max-w-4xl">
+          <div className="bg-gradient-to-br from-indigo-600 to-indigo-700 text-white rounded-2xl rounded-tr-sm px-4.5 py-3 text-xs sm:text-sm text-left shadow-sm shadow-indigo-500/10 leading-relaxed font-normal">
             <p className="whitespace-pre-wrap">{msg.text}</p>
           </div>
           <span className="text-[10px] text-slate-400 dark:text-zinc-500 mt-1 mr-1">
@@ -90,28 +121,56 @@ const ChatMessageItem = memo(function ChatMessageItem({
   }
 
   return (
-    <div className="w-full max-w-3xl mb-6 flex items-start gap-3">
-      {/* Assistant Avatar */}
-      <div className="w-8 h-8 rounded-xl bg-gradient-to-tr from-indigo-600 to-violet-600 text-white flex items-center justify-center shadow-xs flex-shrink-0 mt-0.5">
+    <div className="w-full mb-6 flex items-start gap-3.5 px-2 sm:px-4 lg:px-6">
+      {/* Sleek Lucide Sparkles AI Mentor Avatar */}
+      <div className="w-8 h-8 rounded-xl bg-gradient-to-tr from-indigo-500 via-indigo-600 to-violet-600 text-white flex items-center justify-center shadow-xs shadow-indigo-500/25 flex-shrink-0 mt-0.5 border border-indigo-400/20">
         <Sparkles className="w-4 h-4 text-white" />
       </div>
 
-      <div className="flex-1 space-y-2 min-w-0">
+      <div className="flex-1 space-y-2 min-w-0 w-full">
         <div className="bg-white dark:bg-zinc-900 border border-slate-200/90 dark:border-zinc-800/90 rounded-2xl p-5 sm:p-7 text-left shadow-xs dark:shadow-2xl w-full transition-colors">
-          {/* Placeholder Thinking... Indicator */}
-          {msg.isThinking && !msg.text ? (
-            <div className="flex items-center gap-3 py-2">
-              <div className="flex items-center space-x-1">
-                <span className="w-2 h-2 rounded-full bg-indigo-600 animate-bounce [animation-delay:-0.3s]" />
-                <span className="w-2 h-2 rounded-full bg-indigo-500 animate-bounce [animation-delay:-0.15s]" />
-                <span className="w-2 h-2 rounded-full bg-indigo-400 animate-bounce" />
-              </div>
-              <span className="text-xs font-medium text-slate-700 dark:text-zinc-200">
-                {msg.statusText || 'Thinking...'}
+          {/* Refined Assistant Sub-header */}
+          <div className="flex items-center justify-between pb-3 mb-3 border-b border-slate-100 dark:border-zinc-800/80">
+            <div className="flex items-center gap-2">
+              <span className="font-semibold text-xs text-slate-800 dark:text-zinc-200 tracking-tight">
+                OSS Mentor
               </span>
-              <span className="px-2 py-0.5 rounded-full bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400 text-[10px] font-mono border border-indigo-200/50 dark:border-indigo-900/40">
+              <span className="text-[10px] font-mono font-medium px-2 py-0.5 rounded-full bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400 border border-indigo-200/60 dark:border-indigo-900/40">
                 {ollamaModel || 'gemma:2b'}
               </span>
+            </div>
+            <span className="text-[10px] text-slate-400 dark:text-zinc-500 font-mono">
+              {msg.timestamp || 'Just now'}
+            </span>
+          </div>
+
+          {/* Placeholder Thinking... Indicator */}
+          {msg.isThinking && !msg.text ? (
+            <div className="flex items-center gap-3.5 py-3 px-1">
+              <div className="relative flex items-center justify-center w-8 h-8 rounded-xl bg-indigo-50 dark:bg-indigo-950/60 border border-indigo-200/60 dark:border-indigo-800/60 text-indigo-600 dark:text-indigo-400 flex-shrink-0 shadow-2xs">
+                <Sparkles className="w-4 h-4 text-indigo-600 dark:text-indigo-400 animate-spin" style={{ animationDuration: '4s' }} />
+                <span className="absolute -top-0.5 -right-0.5 flex h-2 w-2">
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-indigo-400 opacity-75" />
+                  <span className="relative inline-flex rounded-full h-2 w-2 bg-indigo-500" />
+                </span>
+              </div>
+              <div className="flex flex-col">
+                <div className="flex items-center gap-2">
+                  <span className="text-xs font-semibold text-slate-800 dark:text-zinc-100 tracking-wide">
+                    OSS Mentor is thinking...
+                  </span>
+                  <div className="flex items-center space-x-1">
+                    <span className="w-1.5 h-1.5 rounded-full bg-indigo-600 dark:bg-indigo-400 animate-bounce [animation-delay:-0.3s]" />
+                    <span className="w-1.5 h-1.5 rounded-full bg-indigo-500 dark:bg-indigo-400 animate-bounce [animation-delay:-0.15s]" />
+                    <span className="w-1.5 h-1.5 rounded-full bg-indigo-400 dark:bg-indigo-400 animate-bounce" />
+                  </div>
+                </div>
+                <span className="text-[11px] text-slate-500 dark:text-zinc-400 font-normal mt-0.5">
+                  {msg.statusText && msg.statusText !== 'Thinking...' && msg.statusText !== 'OSS Mentor is thinking...'
+                    ? msg.statusText
+                    : 'Analyzing open-source context & preparing guidance...'}
+                </span>
+              </div>
             </div>
           ) : (
             /* Markdown Output with prose & prose-invert */
@@ -122,19 +181,16 @@ const ChatMessageItem = memo(function ChatMessageItem({
 
               {/* Streaming Active Pulse Indicator */}
               {msg.isStreaming && (
-                <div className="flex items-center space-x-2 text-indigo-600 dark:text-indigo-400 text-[11px] mt-4 pt-3 border-t border-slate-100 dark:border-zinc-800/80 font-mono">
-                  <span className="relative flex h-2 w-2">
-                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-indigo-500 opacity-75" />
-                    <span className="relative inline-flex rounded-full h-2 w-2 bg-indigo-600" />
-                  </span>
-                  <span>Streaming response from {ollamaModel || 'gemma:2b'}...</span>
+                <div className="flex items-center space-x-2 text-indigo-600 dark:text-indigo-400 text-[11px] mt-4 pt-3 border-t border-slate-100 dark:border-zinc-800/80 font-medium">
+                  <Sparkles className="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400 animate-spin" style={{ animationDuration: '3s' }} />
+                  <span>OSS Mentor is generating response...</span>
                 </div>
               )}
             </div>
           )}
         </div>
 
-        {/* Action bar (Timestamp, Saved badge, Regenerate, Speak, Copy) */}
+        {/* Action bar (Timestamp, Saved badge, Download SKILL.md, Regenerate, Speak, Copy) */}
         {!msg.isThinking && msg.text && (
           <div className="flex items-center justify-between px-1 text-xs">
             <div className="flex items-center gap-2">
@@ -149,6 +205,19 @@ const ChatMessageItem = memo(function ChatMessageItem({
             </div>
 
             <div className="flex items-center gap-1.5">
+              {/* Download SKILL.md Button if content is an Agent Skill Guide */}
+              {isSkillDocument && !msg.isStreaming && (
+                <button
+                  type="button"
+                  onClick={() => handleDownloadSkillMd(msg.text)}
+                  className="inline-flex items-center gap-1.5 px-3 py-1 text-xs font-medium text-emerald-700 dark:text-emerald-300 hover:text-emerald-800 dark:hover:text-emerald-200 bg-emerald-50 dark:bg-emerald-950/50 hover:bg-emerald-100 dark:hover:bg-emerald-900/40 border border-emerald-300/80 dark:border-emerald-800/80 rounded-lg transition-all cursor-pointer shadow-xs"
+                  title="Download as SKILL.md for AI coding agents"
+                >
+                  <Download className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
+                  <span>Download SKILL.md</span>
+                </button>
+              )}
+
               {/* Regenerate Button on last message */}
               {isLast && !isStreaming && (
                 <button
@@ -462,7 +531,7 @@ export default function App() {
    * 3. Streams Ollama chunks directly into message thread
    * 4. Persists complete chat history to IndexedDB & localStorage
    */
-  const executeQuery = async (queryText, tab = activeTab, baseMessages = null) => {
+  const executeQuery = async (queryText, tab = activeTab, baseMessages = null, subMode = 'explain') => {
     const trimmed = queryText.trim();
     if (!trimmed || isStreaming) return;
 
@@ -470,11 +539,13 @@ export default function App() {
     setInputVal('');
     setSubmittedQuery(trimmed);
 
+    const isSkillMode = subMode === 'skill' || /skill\.md|generate skill/i.test(trimmed);
+
     // 1. Immediately append user's message to chat history
     const userMsg = {
       id: `user-${Date.now()}`,
       role: 'user',
-      text: trimmed,
+      text: isSkillMode && !trimmed.toLowerCase().includes('skill') ? `${trimmed} (Generate SKILL.md)` : trimmed,
       timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
     };
 
@@ -485,7 +556,10 @@ export default function App() {
       role: 'assistant',
       text: '',
       isThinking: true,
-      statusText: 'Thinking...',
+      isSkill: isSkillMode,
+      statusText: isSkillMode
+        ? 'Analyzing repo tree, README & CONTRIBUTING.md...'
+        : 'OSS Mentor is thinking...',
       timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
     };
 
@@ -508,10 +582,11 @@ export default function App() {
       let activeIssue = issueContextRef.current || issueContext;
 
       if (tab === 'repo') {
+        const repoCleanStr = trimmed.replace(/\s*\(Generate SKILL\.md\)$/i, '');
         let isRepoUrl = false;
         let parsed = null;
         try {
-          parsed = parseRepoUrl(trimmed);
+          parsed = parseRepoUrl(repoCleanStr);
           isRepoUrl = true;
         } catch {
           isRepoUrl = false;
@@ -521,55 +596,131 @@ export default function App() {
           // Update placeholder status while fetching repository from GitHub
           setMessages((prev) =>
             prev.map((m) =>
-              m.id === aiMsgId ? { ...m, statusText: 'Fetching repository files and README...' } : m
+              m.id === aiMsgId
+                ? {
+                    ...m,
+                    statusText: isSkillMode
+                      ? 'Fetching README, file tree & CONTRIBUTING.md...'
+                      : 'Fetching repository files and README...',
+                  }
+                : m
             )
           );
 
           const { owner, repo } = parsed;
-          const readme = await fetchReadme(owner, repo);
-          let tree = [];
-          try {
-            tree = await fetchTree(owner, repo);
-          } catch {
-            // Tree fallback
-          }
+          const [readme, tree, contributing] = await Promise.all([
+            fetchReadme(owner, repo),
+            fetchTree(owner, repo).catch(() => []),
+            fetchContributing(owner, repo),
+          ]);
 
-          const truncatedReadme = readme.slice(0, 3000);
-          const fileList = tree.slice(0, 30).join('\n');
+          const truncatedReadme = (readme || '').slice(0, 3000);
+          const fileList = tree.slice(0, 40).join('\n');
+          const contributingText = (contributing || '').slice(0, 3000);
 
-          activeRepo = { owner, repo, readme: truncatedReadme, fileList };
+          activeRepo = { owner, repo, readme: truncatedReadme, fileList, contributing: contributingText };
           setRepoContext(activeRepo);
 
-          finalPrompt = [
-            `Repository: ${owner}/${repo}`,
-            '',
-            'README Preview:',
-            truncatedReadme,
-            '',
-            fileList ? `Project Files:\n${fileList}\n` : '',
-            'Please provide a beginner-friendly explanation of this repository:',
-            '- What does this project do in simple terms?',
-            '- What programming languages, tools, or tech stack does it use?',
-            '- Which key files or directories should a newcomer explore first?',
-            '- Clear, beginner-friendly instructions on how to run it locally and make a first contribution.',
-          ].join('\n');
-        } else if (activeRepo) {
-          const recentThread = currentMsgs
-            .slice(-4)
-            .map((m) => `${m.role === 'user' ? 'Beginner' : 'Mentor'}: ${m.text}`)
-            .join('\n\n');
+          if (isSkillMode) {
+            sysPrompt =
+              'You are an expert open-source maintainer creating a SKILL.md file for AI coding agents (like Cline, Cursor, or Copilot). This file must be highly structured, using Markdown headers, so that an AI agent can instantly understand the project, its tech stack, and exactly how to contribute without making mistakes.';
 
-          finalPrompt = [
-            `You are an open-source mentor helping a beginner with the repository "${activeRepo.owner}/${activeRepo.repo}".`,
-            `Repository README snippet:`,
-            activeRepo.readme.slice(0, 1500),
-            '',
-            recentThread ? `Previous discussion:\n${recentThread}\n` : '',
-            `The beginner asks a follow-up question:`,
-            `"${trimmed}"`,
-            '',
-            `Please answer this follow-up question as an encouraging, patient mentor. Relate their question to this project, provide clear steps, and explain in simple terms without assuming advanced knowledge.`,
-          ].filter(Boolean).join('\n');
+            finalPrompt = [
+              `Create a complete, production-ready SKILL.md file for the GitHub repository: "${owner}/${repo}".`,
+              '',
+              'Repository File Tree (top files/directories):',
+              fileList || 'None listed',
+              '',
+              'README.md Content Preview:',
+              truncatedReadme || 'No README provided',
+              '',
+              'CONTRIBUTING.md Guidelines:',
+              contributingText || 'No CONTRIBUTING.md found in repository root.',
+              '',
+              'Format the output strictly as a Markdown document with the following sections:',
+              '# [Repository Name] - Agent Skill Guide',
+              '## 1. Project Overview & Architecture',
+              'Explain the core purpose, system architecture, and mental model of the codebase.',
+              '## 2. Tech Stack & Dependencies',
+              'List all core languages, frameworks, runtime requirements, package managers, and key libraries.',
+              '## 3. Directory Structure & Key Files',
+              'Map out the critical directories, configuration files, and entry points.',
+              '## 4. Local Development & Setup Workflow',
+              'Give the exact commands to clone, install dependencies, configure environment variables, and run locally.',
+              '## 5. Testing, Linting & Build Commands',
+              'Provide the exact commands for running test suites, formatters, and production builds.',
+              '## 6. Contribution Guidelines for AI Agents',
+              'Rules for branch naming, commit messages, PR requirements, coding conventions, and critical gotchas/pitfalls to avoid.',
+            ].join('\n');
+          } else {
+            finalPrompt = [
+              `Repository: ${owner}/${repo}`,
+              '',
+              'README Preview:',
+              truncatedReadme,
+              '',
+              fileList ? `Project Files:\n${fileList}\n` : '',
+              'Please provide a beginner-friendly explanation of this repository:',
+              '- What does this project do in simple terms?',
+              '- What programming languages, tools, or tech stack does it use?',
+              '- Which key files or directories should a newcomer explore first?',
+              '- Clear, beginner-friendly instructions on how to run it locally and make a first contribution.',
+            ].join('\n');
+
+            sysPrompt = getSystemPrompt('repo');
+          }
+        } else if (activeRepo) {
+          if (isSkillMode) {
+            sysPrompt =
+              'You are an expert open-source maintainer creating a SKILL.md file for AI coding agents (like Cline, Cursor, or Copilot). This file must be highly structured, using Markdown headers, so that an AI agent can instantly understand the project, its tech stack, and exactly how to contribute without making mistakes.';
+
+            finalPrompt = [
+              `Create a complete, production-ready SKILL.md file for the GitHub repository: "${activeRepo.owner}/${activeRepo.repo}".`,
+              '',
+              'Repository File Tree (top files/directories):',
+              activeRepo.fileList || 'None listed',
+              '',
+              'README.md Content Preview:',
+              activeRepo.readme || 'No README provided',
+              '',
+              'CONTRIBUTING.md Guidelines:',
+              activeRepo.contributing || 'No CONTRIBUTING.md found in repository root.',
+              '',
+              'Format the output strictly as a Markdown document with the following sections:',
+              '# [Repository Name] - Agent Skill Guide',
+              '## 1. Project Overview & Architecture',
+              'Explain the core purpose, system architecture, and mental model of the codebase.',
+              '## 2. Tech Stack & Dependencies',
+              'List all core languages, frameworks, runtime requirements, package managers, and key libraries.',
+              '## 3. Directory Structure & Key Files',
+              'Map out the critical directories, configuration files, and entry points.',
+              '## 4. Local Development & Setup Workflow',
+              'Give the exact commands to clone, install dependencies, configure environment variables, and run locally.',
+              '## 5. Testing, Linting & Build Commands',
+              'Provide the exact commands for running test suites, formatters, and production builds.',
+              '## 6. Contribution Guidelines for AI Agents',
+              'Rules for branch naming, commit messages, PR requirements, coding conventions, and critical gotchas/pitfalls to avoid.',
+            ].join('\n');
+          } else {
+            const recentThread = currentMsgs
+              .slice(-4)
+              .map((m) => `${m.role === 'user' ? 'Beginner' : 'Mentor'}: ${m.text}`)
+              .join('\n\n');
+
+            finalPrompt = [
+              `You are an open-source mentor helping a beginner with the repository "${activeRepo.owner}/${activeRepo.repo}".`,
+              `Repository README snippet:`,
+              activeRepo.readme.slice(0, 1500),
+              '',
+              recentThread ? `Previous discussion:\n${recentThread}\n` : '',
+              `The beginner asks a follow-up question:`,
+              `"${trimmed}"`,
+              '',
+              `Please answer this follow-up question as an encouraging, patient mentor. Relate their question to this project, provide clear steps, and explain in simple terms without assuming advanced knowledge.`,
+            ].filter(Boolean).join('\n');
+
+            sysPrompt = getSystemPrompt('repo');
+          }
         } else {
           finalPrompt = [
             `You are a patient open-source mentor. A beginner asks:`,
@@ -577,9 +728,9 @@ export default function App() {
             '',
             `Please answer their question in an approachable, beginner-friendly way with clear bullet points.`,
           ].join('\n');
-        }
 
-        sysPrompt = getSystemPrompt('repo');
+          sysPrompt = getSystemPrompt('repo');
+        }
       } else if (tab === 'issue') {
         let isIssueUrl = false;
         let parsedIssue = null;
@@ -668,10 +819,10 @@ export default function App() {
         sysPrompt = getSystemPrompt('chat');
       }
 
-      // Update placeholder status text to Thinking...
+      // Update placeholder status text to OSS Mentor is thinking...
       setMessages((prev) =>
         prev.map((m) =>
-          m.id === aiMsgId ? { ...m, statusText: 'Thinking...' } : m
+          m.id === aiMsgId ? { ...m, statusText: 'OSS Mentor is thinking...' } : m
         )
       );
 
@@ -952,8 +1103,8 @@ export default function App() {
           <div className="p-4 border-b border-slate-200 dark:border-zinc-800">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2.5">
-                <div className="w-8 h-8 rounded-xl bg-indigo-600 text-white flex items-center justify-center shadow-xs">
-                  <Sparkles className="w-4 h-4 text-white" />
+                <div className="w-8 h-8 rounded-xl bg-gradient-to-tr from-indigo-600 to-indigo-700 text-white flex items-center justify-center shadow-xs">
+                  <BrainCircuit className="w-4.5 h-4.5 text-white" />
                 </div>
                 <div>
                   <span className="text-slate-900 dark:text-white font-bold text-sm tracking-tight block">
@@ -1059,11 +1210,11 @@ export default function App() {
                 {filteredHistory.map((item) => {
                   const Icon =
                     item.type === 'chat'
-                      ? MessageCircle
+                      ? MessageSquareCode
                       : item.type === 'repo'
-                      ? Code2
+                      ? FolderGit2
                       : item.type === 'issue'
-                      ? GitBranch
+                      ? GitPullRequest
                       : Terminal;
                   const isCurrent = currentSessionId === item.id;
 
@@ -1199,9 +1350,9 @@ export default function App() {
             </div>
 
             {/* Greeting Section */}
-            <div className="text-center mb-8 space-y-2 max-w-xl">
+            <div className="text-center mb-8 space-y-2 max-w-2xl">
               <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-indigo-50 dark:bg-indigo-950/40 border border-indigo-200/80 dark:border-indigo-900/40 text-xs font-medium text-indigo-700 dark:text-indigo-300 mb-2">
-                <Compass className="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400" />
+                <Sparkles className="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400" />
                 <span>Beginner Open-Source Mentor</span>
               </div>
               <h1 className="text-3xl sm:text-4xl font-bold tracking-tight text-slate-900 dark:text-white">
@@ -1215,14 +1366,16 @@ export default function App() {
             </div>
 
             {/* Input Form (Landing Page) */}
-            <form onSubmit={handleSubmit} className="w-full max-w-2xl">
-              <div className="w-full bg-white dark:bg-zinc-900 border border-slate-300 dark:border-zinc-800 rounded-2xl flex items-center p-2.5 shadow-sm focus-within:ring-2 focus-within:ring-indigo-500/20 focus-within:border-indigo-500 dark:focus-within:border-indigo-500 transition-all">
+            <form onSubmit={handleSubmit} className="w-full max-w-3xl xl:max-w-4xl">
+              <div className="w-full bg-white dark:bg-zinc-900 border border-slate-300 dark:border-zinc-800 rounded-2xl flex items-center p-2.5 shadow-sm focus-within:ring-2 focus-within:ring-indigo-500/20 focus-within:border-indigo-500 dark:focus-within:border-indigo-500 transition-colors">
                 {activeTab === 'git' ? (
                   <Terminal className="w-4 h-4 text-slate-400 dark:text-zinc-500 ml-2.5 mr-1 flex-shrink-0 self-start mt-2" />
                 ) : activeTab === 'chat' ? (
-                  <MessageCircle className="w-4 h-4 text-slate-400 dark:text-zinc-500 ml-2.5 flex-shrink-0" />
+                  <MessageSquareCode className="w-4 h-4 text-slate-400 dark:text-zinc-500 ml-2.5 flex-shrink-0" />
+                ) : activeTab === 'repo' ? (
+                  <FolderGit2 className="w-4 h-4 text-slate-400 dark:text-zinc-500 ml-2.5 flex-shrink-0" />
                 ) : (
-                  <Search className="w-4 h-4 text-slate-400 dark:text-zinc-500 ml-2.5 flex-shrink-0" />
+                  <GitPullRequest className="w-4 h-4 text-slate-400 dark:text-zinc-500 ml-2.5 flex-shrink-0" />
                 )}
 
                 {activeTab === 'git' ? (
@@ -1246,14 +1399,39 @@ export default function App() {
                   />
                 )}
 
-                <button
-                  type="submit"
-                  disabled={isBusy || !inputVal.trim()}
-                  className="bg-indigo-600 hover:bg-indigo-500 text-white disabled:opacity-40 disabled:cursor-not-allowed p-2.5 rounded-xl transition-all cursor-pointer flex-shrink-0 font-medium shadow-xs ml-2"
-                  title="Send"
-                >
-                  <ArrowRight className="w-4 h-4" />
-                </button>
+                {activeTab === 'repo' ? (
+                  <div className="flex items-center gap-2 ml-2 flex-shrink-0">
+                    <button
+                      type="button"
+                      onClick={() => executeQuery(inputVal, 'repo', null, 'explain')}
+                      disabled={isBusy || !inputVal.trim()}
+                      className="inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-medium text-white bg-indigo-600 hover:bg-indigo-500 disabled:opacity-40 disabled:cursor-not-allowed rounded-xl transition-all cursor-pointer shadow-xs"
+                      title="Explain Repository for Beginners"
+                    >
+                      <FolderGit2 className="w-3.5 h-3.5" />
+                      <span className="hidden sm:inline">Explain Repo</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => executeQuery(inputVal, 'repo', null, 'skill')}
+                      disabled={isBusy || !inputVal.trim()}
+                      className="inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-medium text-indigo-700 dark:text-indigo-300 hover:text-indigo-800 dark:hover:text-indigo-200 bg-indigo-50 dark:bg-indigo-950/60 hover:bg-indigo-100 dark:hover:bg-indigo-900/40 border border-indigo-200 dark:border-indigo-800/80 disabled:opacity-40 disabled:cursor-not-allowed rounded-xl transition-all cursor-pointer shadow-xs"
+                      title="Generate SKILL.md for AI coding agents"
+                    >
+                      <FileCode2 className="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400" />
+                      <span className="hidden sm:inline">Generate SKILL.md for AI Agents</span>
+                    </button>
+                  </div>
+                ) : (
+                  <button
+                    type="submit"
+                    disabled={isBusy || !inputVal.trim()}
+                    className="bg-indigo-600 hover:bg-indigo-500 text-white disabled:opacity-40 disabled:cursor-not-allowed p-2.5 rounded-xl transition-all cursor-pointer flex-shrink-0 font-medium shadow-xs ml-2"
+                    title="Send"
+                  >
+                    <SendHorizontal className="w-4 h-4" />
+                  </button>
+                )}
               </div>
 
               {/* Suggestions */}
@@ -1273,14 +1451,14 @@ export default function App() {
             </form>
 
             {/* Quick Action Cards */}
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 w-full max-w-2xl mt-8">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3.5 w-full max-w-3xl xl:max-w-4xl mt-8">
               <button
                 type="button"
                 onClick={() => handleCardClick('repo', 'firstcontributions/first-contributions')}
                 className="p-4 rounded-2xl bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 hover:border-slate-300 dark:hover:bg-zinc-800/50 shadow-xs hover:shadow-md text-left transition-all group cursor-pointer"
               >
                 <div className="w-8 h-8 rounded-xl bg-indigo-100 text-indigo-600 dark:bg-indigo-900/30 dark:text-indigo-400 flex items-center justify-center mb-3 group-hover:scale-105 transition-transform">
-                  <Code2 className="w-4 h-4" />
+                  <FolderGit2 className="w-4 h-4" />
                 </div>
                 <h4 className="text-xs font-semibold text-slate-900 dark:text-white group-hover:text-indigo-600 dark:group-hover:text-indigo-300 transition-colors">
                   Explain a Repo
@@ -1301,7 +1479,7 @@ export default function App() {
                 className="p-4 rounded-2xl bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 hover:border-slate-300 dark:hover:bg-zinc-800/50 shadow-xs hover:shadow-md text-left transition-all group cursor-pointer"
               >
                 <div className="w-8 h-8 rounded-xl bg-indigo-100 text-indigo-600 dark:bg-indigo-900/30 dark:text-indigo-400 flex items-center justify-center mb-3 group-hover:scale-105 transition-transform">
-                  <GitBranch className="w-4 h-4" />
+                  <GitPullRequest className="w-4 h-4" />
                 </div>
                 <h4 className="text-xs font-semibold text-slate-900 dark:text-white group-hover:text-indigo-600 dark:group-hover:text-indigo-300 transition-colors">
                   Demystify an Issue
@@ -1330,25 +1508,32 @@ export default function App() {
           </div>
         ) : (
           /* ================= MULTI-TURN CHAT VIEW ================= */
-          <div className="flex-1 flex flex-col h-full overflow-hidden">
+          <div className="flex-1 flex flex-col h-full overflow-hidden w-full">
             {/* Chat Header Bar */}
-            <div className="w-full border-b border-slate-200 dark:border-zinc-800 bg-white/80 dark:bg-zinc-900/80 backdrop-blur-md px-6 py-3 flex items-center justify-between z-10 flex-shrink-0">
+            <div className="w-full border-b border-slate-200 dark:border-zinc-800 bg-white/80 dark:bg-zinc-900/80 backdrop-blur-md px-4 sm:px-6 lg:px-8 py-3 flex items-center justify-between z-10 flex-shrink-0">
               <div className="flex items-center gap-2.5 text-xs text-slate-600 dark:text-zinc-300">
-                <span className="px-2.5 py-1 rounded-xl bg-indigo-50 dark:bg-indigo-950/60 text-indigo-700 dark:text-indigo-300 font-semibold border border-indigo-200/70 dark:border-indigo-900/50 flex items-center gap-1.5 shadow-2xs">
-                  <Sparkles className="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400" />
-                  <span>{NAV_ITEMS.find((n) => n.id === activeTab)?.label}</span>
-                </span>
+                {(() => {
+                  const activeNav = NAV_ITEMS.find((n) => n.id === activeTab);
+                  const NavIcon = activeNav?.icon || MessageSquareCode;
+                  return (
+                    <span className="px-2.5 py-1 rounded-xl bg-indigo-50 dark:bg-indigo-950/60 text-indigo-700 dark:text-indigo-300 font-semibold border border-indigo-200/70 dark:border-indigo-900/50 flex items-center gap-1.5 shadow-2xs">
+                      <NavIcon className="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400" />
+                      <span>{activeNav?.label}</span>
+                    </span>
+                  );
+                })()}
                 <span className="text-slate-300 dark:text-zinc-700">·</span>
-                <span className="truncate max-w-sm text-slate-700 dark:text-zinc-300 font-medium text-xs">
+                <span className="truncate max-w-sm lg:max-w-xl xl:max-w-2xl text-slate-700 dark:text-zinc-300 font-medium text-xs">
                   {repoContext
                     ? `${repoContext.owner}/${repoContext.repo}`
                     : issueContext
                     ? `#${issueContext.number} ${issueContext.title}`
                     : submittedQuery}
                 </span>
-                <span className="hidden sm:inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-slate-100 dark:bg-zinc-800 text-[10px] font-mono text-slate-500 dark:text-zinc-400 border border-slate-200/60 dark:border-zinc-700/60">
-                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
-                  {settings.ollamaModel || 'gemma:2b'}
+                <span className="hidden sm:inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-slate-100 dark:bg-zinc-800 text-[10px] font-medium text-slate-600 dark:text-zinc-300 border border-slate-200/60 dark:border-zinc-700/60">
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                  <span>OSS Mentor</span>
+                  <span className="text-slate-400 dark:text-zinc-500 font-mono text-[9px]">({settings.ollamaModel || 'gemma:2b'})</span>
                 </span>
               </div>
 
@@ -1377,8 +1562,8 @@ export default function App() {
               </div>
             </div>
 
-            {/* Scrollable Message Thread */}
-            <div className="flex-1 min-h-0 overflow-y-auto px-4 sm:px-6 py-6 flex flex-col items-center w-full">
+            {/* Scrollable Message Thread - Full Width to Cover Left & Right Space */}
+            <div className="flex-1 min-h-0 overflow-y-auto px-2 sm:px-4 lg:px-6 py-6 flex flex-col items-center w-full">
               {/* Completed & Active Message Thread */}
               {messages.map((msg, idx) => (
                 <ChatMessageItem
@@ -1401,18 +1586,18 @@ export default function App() {
               <div ref={scrollBottomRef} />
             </div>
 
-            {/* Bottom Docked Input Form for Follow-up Questions */}
-            <div className="flex-shrink-0 w-full border-t border-slate-200/80 dark:border-zinc-800/80 bg-white/80 dark:bg-zinc-950/80 backdrop-blur-xl px-4 pt-3 pb-3 flex flex-col items-center justify-center z-10">
-              <form onSubmit={handleSubmit} className="w-full max-w-3xl">
+            {/* Bottom Docked Input Form for Follow-up Questions - Full Width */}
+            <div className="flex-shrink-0 w-full border-t border-slate-200/80 dark:border-zinc-800/80 bg-white/80 dark:bg-zinc-950/80 backdrop-blur-xl px-2 sm:px-4 lg:px-6 pt-3 pb-3 flex flex-col items-center justify-center z-10">
+              <form onSubmit={handleSubmit} className="w-full">
                 <div className="w-full bg-white dark:bg-zinc-900 border border-slate-300/80 dark:border-zinc-800 rounded-2xl flex items-center p-2 shadow-sm focus-within:ring-2 focus-within:ring-indigo-500/20 focus-within:border-indigo-500 dark:focus-within:border-indigo-500 transition-colors">
                   {activeTab === 'git' ? (
                     <Terminal className="w-4 h-4 text-indigo-500 ml-2.5 mr-1 flex-shrink-0 self-start mt-2" />
                   ) : activeTab === 'chat' ? (
-                    <MessageCircle className="w-4 h-4 text-indigo-500 ml-2.5 flex-shrink-0" />
+                    <MessageSquareCode className="w-4 h-4 text-indigo-500 ml-2.5 flex-shrink-0" />
                   ) : activeTab === 'repo' ? (
-                    <Code2 className="w-4 h-4 text-indigo-500 ml-2.5 flex-shrink-0" />
+                    <FolderGit2 className="w-4 h-4 text-indigo-500 ml-2.5 flex-shrink-0" />
                   ) : (
-                    <GitBranch className="w-4 h-4 text-indigo-500 ml-2.5 flex-shrink-0" />
+                    <GitPullRequest className="w-4 h-4 text-indigo-500 ml-2.5 flex-shrink-0" />
                   )}
 
                   {activeTab === 'git' ? (
@@ -1442,16 +1627,34 @@ export default function App() {
                     className="bg-gradient-to-r from-indigo-600 to-indigo-500 hover:from-indigo-500 hover:to-indigo-600 text-white disabled:opacity-40 disabled:cursor-not-allowed p-2.5 rounded-xl transition-all cursor-pointer flex-shrink-0 font-medium shadow-sm ml-2"
                     title="Send follow-up question"
                   >
-                    <ArrowRight className="w-4 h-4" />
+                    <SendHorizontal className="w-4 h-4" />
                   </button>
                 </div>
               </form>
-              <div className="flex items-center gap-3 text-[10px] text-slate-400 dark:text-zinc-500 mt-2 font-mono">
-                <span>Enter to send</span>
-                <span>·</span>
-                <span>Shift + Enter for new line</span>
-                <span>·</span>
-                <span className="text-emerald-600 dark:text-emerald-400 font-medium">100% Private & Local</span>
+              <div className="flex flex-wrap items-center justify-between w-full px-2 mt-2 text-[10px] text-slate-400 dark:text-zinc-500 font-mono">
+                <div className="flex items-center gap-3">
+                  <span>Enter to send</span>
+                  <span>·</span>
+                  <span>Shift + Enter for new line</span>
+                  <span>·</span>
+                  <span className="text-emerald-600 dark:text-emerald-400 font-medium">100% Private & Local</span>
+                </div>
+                {Boolean(repoContext || activeTab === 'repo') && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const repoTarget = repoContext ? `${repoContext.owner}/${repoContext.repo}` : inputVal;
+                      if (repoTarget) {
+                        executeQuery(repoTarget, 'repo', null, 'skill');
+                      }
+                    }}
+                    className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-indigo-50 dark:bg-indigo-950/60 border border-indigo-200/80 dark:border-indigo-800/60 text-indigo-700 dark:text-indigo-300 hover:bg-indigo-100 dark:hover:bg-indigo-900/40 transition-colors cursor-pointer text-[10px] font-sans font-medium mt-1 sm:mt-0"
+                    title="Auto-generate SKILL.md for AI coding agents"
+                  >
+                    <FileCode2 className="w-3 h-3 text-indigo-600 dark:text-indigo-400" />
+                    <span>Auto-Generate SKILL.md for AI Agents</span>
+                  </button>
+                )}
               </div>
             </div>
           </div>

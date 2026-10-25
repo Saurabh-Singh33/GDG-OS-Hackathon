@@ -157,3 +157,33 @@ export async function fetchIssue(owner, repo, number) {
     throw new Error('Issue not found');
   }
 }
+
+/**
+ * Fetches the raw Markdown content of a repository's CONTRIBUTING.md.
+ * If it exists, returns the raw text. If it returns 404 or fails, returns an empty string "".
+ *
+ * @param {string} owner
+ * @param {string} repo
+ * @returns {Promise<string>}
+ */
+export async function fetchContributing(owner, repo) {
+  try {
+    const response = await fetch(
+      `https://api.github.com/repos/${owner}/${repo}/contents/CONTRIBUTING.md`,
+      {
+        headers: {
+          Accept: 'application/vnd.github.raw+json',
+        },
+      }
+    );
+
+    if (!response.ok) {
+      return '';
+    }
+
+    return await response.text();
+  } catch {
+    return '';
+  }
+}
+
