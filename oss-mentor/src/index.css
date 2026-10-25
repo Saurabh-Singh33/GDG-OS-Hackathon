@@ -1,10 +1,54 @@
 @import "tailwindcss";
 
-/* Dark-mode custom styling for Markdown rendered inside .prose */
+/* Ambient glow & backdrop effects */
+.bg-ambient-glow {
+  background-image: 
+    radial-gradient(ellipse 60% 40% at 50% 0%, rgba(99, 102, 241, 0.12), transparent 70%),
+    radial-gradient(ellipse 40% 30% at 85% 15%, rgba(168, 85, 247, 0.08), transparent 60%);
+}
+
+.theme-emerald .bg-ambient-glow {
+  background-image: 
+    radial-gradient(ellipse 60% 40% at 50% 0%, rgba(16, 185, 129, 0.12), transparent 70%),
+    radial-gradient(ellipse 40% 30% at 85% 15%, rgba(52, 211, 153, 0.08), transparent 60%);
+}
+
+.theme-amber .bg-ambient-glow {
+  background-image: 
+    radial-gradient(ellipse 60% 40% at 50% 0%, rgba(245, 158, 11, 0.12), transparent 70%),
+    radial-gradient(ellipse 40% 30% at 85% 15%, rgba(251, 191, 36, 0.08), transparent 60%);
+}
+
+/* Custom sleek dark scrollbar */
+::-webkit-scrollbar {
+  width: 5px;
+  height: 5px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.12);
+  border-radius: 9999px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.22);
+}
+
+* {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.12) transparent;
+}
+
+/* Premium Dark-mode Markdown styling */
 .prose-dark-markdown {
-  color: #cbd5e1;
+  color: #e2e8f0;
   font-size: 0.95rem;
-  line-height: 1.7;
+  line-height: 1.8;
+  letter-spacing: -0.01em;
 }
 
 .prose-dark-markdown h1,
@@ -13,90 +57,100 @@
 .prose-dark-markdown h4 {
   color: #ffffff;
   font-weight: 600;
-  margin-top: 1.25rem;
+  letter-spacing: -0.02em;
+  margin-top: 1.5rem;
   margin-bottom: 0.5rem;
 }
 
 .prose-dark-markdown h1 {
-  font-size: 1.5rem;
+  font-size: 1.4rem;
 }
 
 .prose-dark-markdown h2 {
-  font-size: 1.25rem;
+  font-size: 1.2rem;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  padding-bottom: 0.4rem;
 }
 
 .prose-dark-markdown h3 {
-  font-size: 1.1rem;
+  font-size: 1.05rem;
 }
 
 .prose-dark-markdown p {
-  margin-top: 0.5rem;
-  margin-bottom: 0.5rem;
+  margin-top: 0.65rem;
+  margin-bottom: 0.65rem;
+  color: #cbd5e1;
 }
 
 .prose-dark-markdown ul {
   list-style-type: disc;
-  padding-left: 1.5rem;
+  padding-left: 1.35rem;
   margin-top: 0.5rem;
   margin-bottom: 0.5rem;
+  color: #cbd5e1;
 }
 
 .prose-dark-markdown ol {
   list-style-type: decimal;
-  padding-left: 1.5rem;
+  padding-left: 1.35rem;
   margin-top: 0.5rem;
   margin-bottom: 0.5rem;
+  color: #cbd5e1;
 }
 
 .prose-dark-markdown li {
-  margin-top: 0.25rem;
-  margin-bottom: 0.25rem;
+  margin-top: 0.3rem;
+  margin-bottom: 0.3rem;
 }
 
 .prose-dark-markdown pre {
-  background-color: #1e293b;
-  border: 1px solid #334155;
-  border-radius: 0.75rem;
-  padding: 1rem;
+  background-color: rgba(15, 23, 42, 0.75);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 0.85rem;
+  padding: 1.1rem;
   overflow-x: auto;
-  margin-top: 0.75rem;
-  margin-bottom: 0.75rem;
+  margin-top: 0.9rem;
+  margin-bottom: 0.9rem;
+  box-shadow: inset 0 1px 1px rgba(0, 0, 0, 0.3);
 }
 
 .prose-dark-markdown code {
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
-  font-size: 0.85em;
-  color: #93c5fd;
-  background-color: #1e293b;
-  padding: 0.15rem 0.4rem;
-  border-radius: 0.25rem;
+  font-size: 0.84em;
+  color: #e0e7ff;
+  background-color: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  padding: 0.15rem 0.45rem;
+  border-radius: 0.35rem;
 }
 
 .prose-dark-markdown pre code {
   background-color: transparent;
+  border: none;
   padding: 0;
-  color: #e2e8f0;
+  color: #f1f5f9;
 }
 
 .prose-dark-markdown blockquote {
-  border-left: 3px solid #3b82f6;
+  border-left: 2px solid #818cf8;
   padding-left: 1rem;
   color: #94a3b8;
   font-style: italic;
-  margin: 0.75rem 0;
+  margin: 0.85rem 0;
 }
 
 .prose-dark-markdown a {
-  color: #60a5fa;
+  color: #818cf8;
   text-decoration: underline;
-  text-underline-offset: 2px;
+  text-underline-offset: 3px;
+  font-weight: 500;
 }
 
 .prose-dark-markdown a:hover {
-  color: #93c5fd;
+  color: #a5b4fc;
 }
 
 .prose-dark-markdown hr {
-  border-color: #1e293b;
+  border-color: rgba(255, 255, 255, 0.08);
   margin: 1.5rem 0;
 }
