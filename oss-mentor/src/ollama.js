@@ -4,32 +4,43 @@
  * @param {string} model - The model name (e.g. 'gemma:2b')
  * @param {string} prompt - The user prompt
  * @param {string} [system] - Optional system prompt
+ * @param {string} [baseUrl] - Base Ollama API url (default: 'http://localhost:11434')
  * @returns {AsyncGenerator<string, void, unknown>}
  */
-export async function* streamOllama(model, prompt, system) {
+export async function* streamOllama(model, prompt, system, baseUrl = 'http://localhost:11434') {
   let res;
-  try {
-    res = await fetch('http://localhost:11434/api/generate', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        model,
-        prompt,
-        system,
-        stream: true,
-      }),
-    });
-  } catch {
-    throw new Error(
-      "Could not reach Ollama. Make sure you ran OLLAMA_ORIGINS='*' ollama serve and ollama pull gemma:2b."
-    );
+  const primaryUrl = (baseUrl || 'http://localhost:11434').replace(/\/$/, '');
+  const urlsToTry = [
+    `${primaryUrl}/api/generate`,
+    primaryUrl.includes('localhost')
+      ? primaryUrl.replace('localhost', '127.0.0.1') + '/api/generate'
+      : null,
+  ].filter(Boolean);
+
+  let lastError = null;
+  for (const url of urlsToTry) {
+    try {
+      res = await fetch(url, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          model,
+          prompt,
+          system,
+          stream: true,
+        }),
+      });
+      if (res.ok && res.body) break;
+    } catch (err) {
+      lastError = err;
+    }
   }
 
-  if (!res.ok || !res.body) {
+  if (!res || !res.ok || !res.body) {
     throw new Error(
-      "Could not reach Ollama. Make sure you ran OLLAMA_ORIGINS='*' ollama serve and ollama pull gemma:2b."
+      `Could not reach Ollama at ${primaryUrl}. Make sure you ran $env:OLLAMA_ORIGINS="*" ; ollama serve and ollama pull ${model || 'gemma:2b'}.`
     );
   }
 

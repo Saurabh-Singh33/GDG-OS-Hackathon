@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useMemo, useCallback, memo } from 'react';
 import {
   Code2,
   GitBranch,
@@ -24,7 +24,7 @@ import {
 } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import { parseRepoUrl, fetchReadme, fetchTree, parseIssueUrl, fetchIssue } from './github.js';
-import StreamingOutput from './components/StreamingOutput.jsx';
+import { streamOllama } from './ollama.js';
 import SettingsModal from './components/SettingsModal.jsx';
 import MermaidDiagram from './components/MermaidDiagram.jsx';
 import {
@@ -52,6 +52,162 @@ const NAV_ITEMS = [
   { id: 'git', label: 'Git Helper', icon: Terminal },
 ];
 
+/**
+ * Memoized Chat Message Item
+ * Prevents re-rendering message bubbles and unmounting child components (like Mermaid diagrams)
+ * when the user types in the input box.
+ */
+const ChatMessageItem = memo(function ChatMessageItem({
+  msg,
+  idx,
+  isLast,
+  isStreaming,
+  initials,
+  ollamaModel,
+  markdownComponents,
+  speakingId,
+  copiedId,
+  onRegenerate,
+  onSpeak,
+  onCopy,
+}) {
+  if (msg.role === 'user') {
+    return (
+      <div className="w-full max-w-3xl mb-6 flex justify-end items-end gap-2.5">
+        <div className="flex flex-col items-end max-w-xl">
+          <div className="bg-gradient-to-br from-indigo-600 to-indigo-700 text-white rounded-2xl rounded-tr-sm px-4 py-3 text-xs sm:text-sm text-left shadow-sm shadow-indigo-500/10 leading-relaxed font-normal">
+            <p className="whitespace-pre-wrap">{msg.text}</p>
+          </div>
+          <span className="text-[10px] text-slate-400 dark:text-zinc-500 mt-1 mr-1">
+            {msg.timestamp || 'You'}
+          </span>
+        </div>
+        <div className="w-7 h-7 rounded-full bg-gradient-to-tr from-indigo-600 to-purple-600 text-white font-semibold text-xs flex items-center justify-center flex-shrink-0 shadow-xs mb-4">
+          {initials}
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="w-full max-w-3xl mb-6 flex items-start gap-3">
+      {/* Assistant Avatar */}
+      <div className="w-8 h-8 rounded-xl bg-gradient-to-tr from-indigo-600 to-violet-600 text-white flex items-center justify-center shadow-xs flex-shrink-0 mt-0.5">
+        <Sparkles className="w-4 h-4 text-white" />
+      </div>
+
+      <div className="flex-1 space-y-2 min-w-0">
+        <div className="bg-white dark:bg-zinc-900 border border-slate-200/90 dark:border-zinc-800/90 rounded-2xl p-5 sm:p-7 text-left shadow-xs dark:shadow-2xl w-full transition-colors">
+          {/* Placeholder Thinking... Indicator */}
+          {msg.isThinking && !msg.text ? (
+            <div className="flex items-center gap-3 py-2">
+              <div className="flex items-center space-x-1">
+                <span className="w-2 h-2 rounded-full bg-indigo-600 animate-bounce [animation-delay:-0.3s]" />
+                <span className="w-2 h-2 rounded-full bg-indigo-500 animate-bounce [animation-delay:-0.15s]" />
+                <span className="w-2 h-2 rounded-full bg-indigo-400 animate-bounce" />
+              </div>
+              <span className="text-xs font-medium text-slate-700 dark:text-zinc-200">
+                {msg.statusText || 'Thinking...'}
+              </span>
+              <span className="px-2 py-0.5 rounded-full bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400 text-[10px] font-mono border border-indigo-200/50 dark:border-indigo-900/40">
+                {ollamaModel || 'gemma:2b'}
+              </span>
+            </div>
+          ) : (
+            /* Markdown Output with prose & prose-invert */
+            <div className="prose prose-slate dark:prose-invert max-w-none text-slate-800 dark:text-zinc-200 leading-relaxed text-sm">
+              <ReactMarkdown components={markdownComponents}>
+                {msg.text}
+              </ReactMarkdown>
+
+              {/* Streaming Active Pulse Indicator */}
+              {msg.isStreaming && (
+                <div className="flex items-center space-x-2 text-indigo-600 dark:text-indigo-400 text-[11px] mt-4 pt-3 border-t border-slate-100 dark:border-zinc-800/80 font-mono">
+                  <span className="relative flex h-2 w-2">
+                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-indigo-500 opacity-75" />
+                    <span className="relative inline-flex rounded-full h-2 w-2 bg-indigo-600" />
+                  </span>
+                  <span>Streaming response from {ollamaModel || 'gemma:2b'}...</span>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+
+        {/* Action bar (Timestamp, Saved badge, Regenerate, Speak, Copy) */}
+        {!msg.isThinking && msg.text && (
+          <div className="flex items-center justify-between px-1 text-xs">
+            <div className="flex items-center gap-2">
+              <span className="text-[11px] text-slate-400 dark:text-zinc-500">
+                {msg.timestamp || 'Saved'}
+              </span>
+              <span className="w-1 h-1 rounded-full bg-slate-300 dark:bg-zinc-700" />
+              <span className="text-[10px] text-emerald-600 dark:text-emerald-400 font-medium flex items-center gap-1">
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
+                Saved in local DB
+              </span>
+            </div>
+
+            <div className="flex items-center gap-1.5">
+              {/* Regenerate Button on last message */}
+              {isLast && !isStreaming && (
+                <button
+                  type="button"
+                  onClick={onRegenerate}
+                  className="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium text-slate-600 dark:text-zinc-400 hover:text-slate-900 dark:hover:text-white bg-slate-100 dark:bg-zinc-800 hover:bg-slate-200 dark:hover:bg-zinc-700/60 rounded-lg transition-all cursor-pointer shadow-xs"
+                  title="Regenerate this response"
+                >
+                  <RotateCcw className="w-3.5 h-3.5" />
+                  <span>Regenerate</span>
+                </button>
+              )}
+
+              {/* Speak Button (Offline Web Speech API) */}
+              <button
+                type="button"
+                onClick={() => onSpeak(msg.text, idx)}
+                className="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium text-slate-600 dark:text-zinc-400 hover:text-slate-900 dark:hover:text-white bg-slate-100 dark:bg-zinc-800 hover:bg-slate-200 dark:hover:bg-zinc-700/60 rounded-lg transition-all cursor-pointer shadow-xs"
+                title={speakingId === idx ? 'Stop speaking' : 'Read aloud with browser TTS'}
+              >
+                {speakingId === idx ? (
+                  <>
+                    <VolumeX className="w-3.5 h-3.5 text-indigo-500 animate-pulse" />
+                    <span className="text-indigo-600 dark:text-indigo-400">Stop</span>
+                  </>
+                ) : (
+                  <>
+                    <Volume2 className="w-3.5 h-3.5 text-slate-400 dark:text-zinc-500" />
+                    <span>Speak</span>
+                  </>
+                )}
+              </button>
+
+              {/* Copy Button */}
+              <button
+                type="button"
+                onClick={() => onCopy(msg.text, idx)}
+                className="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium text-slate-600 dark:text-zinc-400 hover:text-slate-900 dark:hover:text-white bg-slate-100 dark:bg-zinc-800 hover:bg-slate-200 dark:hover:bg-zinc-700/60 rounded-lg transition-all cursor-pointer shadow-xs"
+              >
+                {copiedId === idx ? (
+                  <>
+                    <Check className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
+                    <span className="text-emerald-600 dark:text-emerald-400">Copied!</span>
+                  </>
+                ) : (
+                  <>
+                    <Copy className="w-3.5 h-3.5 text-slate-400 dark:text-zinc-500" />
+                    <span>Copy</span>
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+});
+
 export default function App() {
   // Theme state ('dark' or 'light')
   const [theme, setTheme] = useState(() => {
@@ -64,8 +220,6 @@ export default function App() {
 
   const [activeTab, setActiveTab] = useState('chat');
   const [inputVal, setInputVal] = useState('');
-  const [prompt, setPrompt] = useState('');
-  const [systemPrompt, setSystemPrompt] = useState('');
   const [currentSessionId, setCurrentSessionId] = useState(null);
   const [isLoading, setIsLoading] = useState(false);
   const [isStreaming, setIsStreaming] = useState(false);
@@ -228,7 +382,6 @@ export default function App() {
     if (tabId === activeTab) return;
     setActiveTab(tabId);
     setInputVal('');
-    setPrompt('');
     setMessages([]);
     setRepoContext(null);
     setIssueContext(null);
@@ -242,7 +395,6 @@ export default function App() {
   const handleReset = () => {
     clearLastActiveSession();
     setInputVal('');
-    setPrompt('');
     setMessages([]);
     setRepoContext(null);
     setIssueContext(null);
@@ -254,7 +406,7 @@ export default function App() {
   };
 
   const MERMAID_INSTRUCTION =
-    'If the user asks about a process, architecture, or flow (like Git branching, pull requests, or repo structure), include a Mermaid.js diagram inside a ```mermaid code block.';
+    'Only if the user explicitly asks for a diagram or flowchart, include a valid Mermaid.js diagram inside a ```mermaid code block with "graph TD" on its own line and quote all node labels (e.g. A["Step 1"] --> B["Step 2"]). Never include a mermaid diagram unless explicitly requested.';
 
   const getSystemPrompt = (tab = activeTab) => {
     if (tab === 'chat') {
@@ -270,7 +422,7 @@ export default function App() {
       : `You are a patient open-source mentor. Explain things for a complete beginner. Never assume they know Git. Be concise and use bullet points. ${MERMAID_INSTRUCTION}`;
   };
 
-  const handleSpeakMessage = (text, id) => {
+  const handleSpeakMessage = useCallback((text, id) => {
     if (typeof window === 'undefined' || !window.speechSynthesis) return;
 
     if (speakingId === id) {
@@ -301,28 +453,45 @@ export default function App() {
 
     setSpeakingId(id);
     window.speechSynthesis.speak(utterance);
-  };
+  }, [speakingId]);
 
   /**
    * Main execution logic:
-   * Supports BOTH initial URL analysis AND natural-language follow-up questions!
+   * 1. Immediately appends user prompt
+   * 2. Immediately appends AI Thinking... placeholder
+   * 3. Streams Ollama chunks directly into message thread
+   * 4. Persists complete chat history to IndexedDB & localStorage
    */
-  const executeQuery = async (queryText, tab = activeTab) => {
+  const executeQuery = async (queryText, tab = activeTab, baseMessages = null) => {
     const trimmed = queryText.trim();
-    if (!trimmed || isLoading || isStreaming) return;
+    if (!trimmed || isStreaming) return;
 
     setError(null);
-    setPrompt('');
-    setIsLoading(true);
+    setInputVal('');
     setSubmittedQuery(trimmed);
 
-    // Append user question to the messages thread using current ref
-    const currentMsgs = messagesRef.current || messages;
-    const newMessages = [
-      ...currentMsgs,
-      { role: 'user', text: trimmed, timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) },
-    ];
-    setMessages(newMessages);
+    // 1. Immediately append user's message to chat history
+    const userMsg = {
+      id: `user-${Date.now()}`,
+      role: 'user',
+      text: trimmed,
+      timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+    };
+
+    // 2. Immediately append placeholder AI message bubble that says "Thinking..."
+    const aiMsgId = `assistant-${Date.now() + 1}`;
+    const aiPlaceholder = {
+      id: aiMsgId,
+      role: 'assistant',
+      text: '',
+      isThinking: true,
+      statusText: 'Thinking...',
+      timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+    };
+
+    const currentMsgs = baseMessages || messagesRef.current || messages;
+    const initialThread = [...currentMsgs, userMsg, aiPlaceholder];
+    setMessages(initialThread);
 
     let sessionId = currentSessionId;
     if (!sessionId) {
@@ -330,13 +499,15 @@ export default function App() {
       setCurrentSessionId(sessionId);
     }
 
+    setIsStreaming(true);
+
     try {
       let finalPrompt = '';
+      let sysPrompt = '';
       let activeRepo = repoContextRef.current || repoContext;
       let activeIssue = issueContextRef.current || issueContext;
 
       if (tab === 'repo') {
-        // Check if query is a repo URL or a follow-up question
         let isRepoUrl = false;
         let parsed = null;
         try {
@@ -347,7 +518,13 @@ export default function App() {
         }
 
         if (isRepoUrl && parsed) {
-          // New repository provided
+          // Update placeholder status while fetching repository from GitHub
+          setMessages((prev) =>
+            prev.map((m) =>
+              m.id === aiMsgId ? { ...m, statusText: 'Fetching repository files and README...' } : m
+            )
+          );
+
           const { owner, repo } = parsed;
           const readme = await fetchReadme(owner, repo);
           let tree = [];
@@ -377,8 +554,7 @@ export default function App() {
             '- Clear, beginner-friendly instructions on how to run it locally and make a first contribution.',
           ].join('\n');
         } else if (activeRepo) {
-          // Follow-up question about the loaded repository!
-          const recentThread = (messagesRef.current || messages)
+          const recentThread = currentMsgs
             .slice(-4)
             .map((m) => `${m.role === 'user' ? 'Beginner' : 'Mentor'}: ${m.text}`)
             .join('\n\n');
@@ -395,7 +571,6 @@ export default function App() {
             `Please answer this follow-up question as an encouraging, patient mentor. Relate their question to this project, provide clear steps, and explain in simple terms without assuming advanced knowledge.`,
           ].filter(Boolean).join('\n');
         } else {
-          // General question asked in repo mode without prior repo
           finalPrompt = [
             `You are a patient open-source mentor. A beginner asks:`,
             `"${trimmed}"`,
@@ -404,7 +579,7 @@ export default function App() {
           ].join('\n');
         }
 
-        setSystemPrompt(getSystemPrompt('repo'));
+        sysPrompt = getSystemPrompt('repo');
       } else if (tab === 'issue') {
         let isIssueUrl = false;
         let parsedIssue = null;
@@ -416,6 +591,12 @@ export default function App() {
         }
 
         if (isIssueUrl && parsedIssue) {
+          setMessages((prev) =>
+            prev.map((m) =>
+              m.id === aiMsgId ? { ...m, statusText: 'Fetching issue details from GitHub...' } : m
+            )
+          );
+
           const { owner, repo, number } = parsedIssue;
           const issue = await fetchIssue(owner, repo, number);
 
@@ -443,8 +624,7 @@ export default function App() {
             '- What are the step-by-step actions someone should take to solve or test it?',
           ].join('\n');
         } else if (activeIssue) {
-          // Follow-up question on the issue
-          const recentThread = (messagesRef.current || messages)
+          const recentThread = currentMsgs
             .slice(-4)
             .map((m) => `${m.role === 'user' ? 'Beginner' : 'Mentor'}: ${m.text}`)
             .join('\n\n');
@@ -466,42 +646,87 @@ export default function App() {
           ].join('\n');
         }
 
-        setSystemPrompt(getSystemPrompt('issue'));
+        sysPrompt = getSystemPrompt('issue');
       } else if (tab === 'git') {
-        // Multi-turn context for Git helper
-        const contextStr = (messagesRef.current || messages)
+        const contextStr = currentMsgs
           .slice(-3)
           .map((m) => `${m.role === 'user' ? 'User' : 'Mentor'}: ${m.text}`)
           .join('\n\n');
         finalPrompt = contextStr
           ? `Conversation history:\n${contextStr}\n\nUser asks: "${trimmed}"\nAnswer with the exact Git command needed.`
           : trimmed;
-        setSystemPrompt(getSystemPrompt('git'));
+        sysPrompt = getSystemPrompt('git');
       } else {
-        // 'chat' mode: General open-ended mentor conversation
-        const contextStr = (messagesRef.current || messages)
-          .slice(-4)
+        // 'chat' mode: General open-ended mentor conversation with multi-turn memory
+        const contextStr = currentMsgs
+          .slice(-6)
           .map((m) => `${m.role === 'user' ? 'User' : 'Mentor'}: ${m.text}`)
           .join('\n\n');
         finalPrompt = contextStr
           ? `Previous conversation:\n${contextStr}\n\nUser asks: "${trimmed}"\nAnswer helpfully as their open-source mentor.`
           : trimmed;
-        setSystemPrompt(getSystemPrompt('chat'));
+        sysPrompt = getSystemPrompt('chat');
       }
 
-      setPrompt(finalPrompt);
+      // Update placeholder status text to Thinking...
+      setMessages((prev) =>
+        prev.map((m) =>
+          m.id === aiMsgId ? { ...m, statusText: 'Thinking...' } : m
+        )
+      );
 
-      // Save session in local database
+      // 3. Trigger streamOllama directly
+      const stream = streamOllama(
+        settings.ollamaModel || 'gemma:2b',
+        finalPrompt,
+        sysPrompt,
+        settings.ollamaUrl || 'http://localhost:11434'
+      );
+
+      let accumulated = '';
+      // 4. As text streams in, replace the Thinking... placeholder with Markdown output
+      for await (const chunk of stream) {
+        accumulated += chunk;
+        setMessages((prev) =>
+          prev.map((m) =>
+            m.id === aiMsgId
+              ? {
+                  ...m,
+                  text: accumulated,
+                  isThinking: false,
+                  isStreaming: true,
+                }
+              : m
+          )
+        );
+      }
+
+      // Streaming finished: finalize message
+      const finalized = (messagesRef.current || []).map((m) =>
+        m.id === aiMsgId
+          ? {
+              ...m,
+              text: accumulated,
+              isThinking: false,
+              isStreaming: false,
+            }
+          : m
+      );
+      setMessages(finalized);
+      setIsStreaming(false);
+
+      // 5. Store history of every chat in local database (IndexedDB + localStorage)
       const sessionData = {
         id: sessionId,
         type: tab,
         query: currentMsgs.length === 0 ? trimmed : currentMsgs[0].text,
-        title: activeRepo ? `${activeRepo.owner}/${activeRepo.repo}` : trimmed.slice(0, 32),
-        messages: newMessages,
+        title: activeRepo ? `${activeRepo.owner}/${activeRepo.repo}` : (currentMsgs[0]?.text || trimmed).slice(0, 32),
+        messages: finalized,
         repoContext: activeRepo,
         issueContext: activeIssue,
-        answer: '',
+        answer: accumulated,
         timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+        updatedAt: Date.now(),
       };
 
       await saveSession(sessionData);
@@ -510,55 +735,44 @@ export default function App() {
         const filtered = prev.filter((item) => item.id !== sessionId);
         return [sessionData, ...filtered].slice(0, 20);
       });
-
-      setIsLoading(false);
-      setIsStreaming(true);
-      setInputVal('');
     } catch (err) {
-      setIsLoading(false);
-      setError(err.message || 'An error occurred while processing your request.');
-    }
-  };
+      setIsStreaming(false);
+      setOllamaWarning(true);
+      const errorMsg = `⚠️ **Could not reach Ollama.**\n\nMake sure your local Ollama server is running with CORS enabled:\n\`\`\`powershell\n$env:OLLAMA_ORIGINS="*" ; ollama serve\n\`\`\`\n*Model requested:* \`${settings.ollamaModel || 'gemma:2b'}\`\n\n*Error details:* ${err.message || 'Connection refused'}`;
 
-  // Called when Ollama streaming completes: saves assistant answer to thread and database
-  const handleStreamingDone = async (accumulatedText) => {
-    setIsStreaming(false);
-    setPrompt('');
-
-    const currentMsgs = messagesRef.current || messages;
-    const updatedMessages = [
-      ...currentMsgs,
-      {
-        role: 'assistant',
-        text: accumulatedText,
-        timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-      },
-    ];
-    setMessages(updatedMessages);
-
-    if (currentSessionId) {
-      await updateSession(currentSessionId, {
-        messages: updatedMessages,
-        answer: accumulatedText,
-        repoContext: repoContextRef.current || repoContext,
-        issueContext: issueContextRef.current || issueContext,
-      });
-
-      setRecentQueries((prev) =>
-        prev.map((item) =>
-          item.id === currentSessionId
-            ? { ...item, messages: updatedMessages, answer: accumulatedText }
-            : item
-        )
+      const errorThread = (messagesRef.current || []).map((m) =>
+        m.id === aiMsgId
+          ? {
+              ...m,
+              text: errorMsg,
+              isThinking: false,
+              isStreaming: false,
+              isError: true,
+            }
+          : m
       );
+      setMessages(errorThread);
+      setError(err.message || 'Could not reach Ollama.');
+
+      if (sessionId) {
+        await updateSession(sessionId, {
+          messages: errorThread,
+          answer: errorMsg,
+        });
+      }
     }
   };
 
-  const handleRegenerate = () => {
-    if (submittedQuery) {
-      executeQuery(submittedQuery, activeTab);
+  const handleRegenerate = useCallback(() => {
+    if (isStreaming) return;
+    const currentMsgs = messagesRef.current || messages;
+    const lastUserIdx = [...currentMsgs].map((m) => m.role).lastIndexOf('user');
+    if (lastUserIdx !== -1) {
+      const lastUserQuery = currentMsgs[lastUserIdx].text;
+      const historyBefore = currentMsgs.slice(0, lastUserIdx);
+      executeQuery(lastUserQuery, activeTab, historyBefore);
     }
-  };
+  }, [isStreaming, activeTab, messages]);
 
   const handleSubmit = (e) => {
     if (e) e.preventDefault();
@@ -581,7 +795,6 @@ export default function App() {
     setError(null);
     setIsLoading(false);
     setIsStreaming(false);
-    setPrompt('');
 
     if (Array.isArray(item.messages) && item.messages.length > 0) {
       setMessages(item.messages);
@@ -604,7 +817,7 @@ export default function App() {
     }
   };
 
-  const handleCopyMessage = async (text, id) => {
+  const handleCopyMessage = useCallback(async (text, id) => {
     try {
       await navigator.clipboard.writeText(text);
       setCopiedId(id);
@@ -612,7 +825,7 @@ export default function App() {
     } catch (err) {
       console.error('Failed to copy message:', err);
     }
-  };
+  }, []);
 
   const getPlaceholder = () => {
     if (messages.length > 0) {
@@ -684,6 +897,51 @@ export default function App() {
     setInputVal(sampleQuery);
     executeQuery(sampleQuery, tabId);
   };
+
+  /**
+   * Memoize ReactMarkdown components configuration based on `theme`.
+   * Passing an inline object causes ReactMarkdown to unmount & remount child components
+   * on every keystroke, which causes MermaidDiagram to destroy and shake the screen.
+   */
+  const markdownComponents = useMemo(
+    () => ({
+      pre({ children, ...props }) {
+        const child = Array.isArray(children) ? children[0] : children;
+        if (child && child.props && /language-mermaid/.test(child.props.className || '')) {
+          const code = String(child.props.children || '').replace(/\n$/, '');
+          return <MermaidDiagram chart={code} isDark={theme === 'dark'} />;
+        }
+        return (
+          <pre
+            className="p-3.5 my-3 overflow-x-auto rounded-xl bg-slate-100 dark:bg-zinc-800/80 text-xs font-mono text-slate-800 dark:text-zinc-200 border border-slate-200 dark:border-zinc-700/60"
+            {...props}
+          >
+            {children}
+          </pre>
+        );
+      },
+      code({ className, children, ...props }) {
+        const match = /language-(\w+)/.exec(className || '');
+        if (match && match[1] === 'mermaid') {
+          return (
+            <MermaidDiagram
+              chart={String(children).replace(/\n$/, '')}
+              isDark={theme === 'dark'}
+            />
+          );
+        }
+        return (
+          <code
+            className={`${className || ''} px-1.5 py-0.5 rounded text-xs font-mono bg-slate-100 dark:bg-zinc-800 text-indigo-600 dark:text-indigo-400`}
+            {...props}
+          >
+            {children}
+          </code>
+        );
+      },
+    }),
+    [theme]
+  );
 
   return (
     <div className="flex h-screen bg-slate-50 dark:bg-zinc-950 text-slate-900 dark:text-zinc-200 font-sans overflow-hidden antialiased transition-colors duration-200">
@@ -1074,31 +1332,31 @@ export default function App() {
           /* ================= MULTI-TURN CHAT VIEW ================= */
           <div className="flex-1 flex flex-col h-full overflow-hidden">
             {/* Chat Header Bar */}
-            <div className="w-full border-b border-slate-200 dark:border-zinc-800 bg-white/80 dark:bg-zinc-900/80 backdrop-blur-md px-6 py-3 flex items-center justify-between z-10">
+            <div className="w-full border-b border-slate-200 dark:border-zinc-800 bg-white/80 dark:bg-zinc-900/80 backdrop-blur-md px-6 py-3 flex items-center justify-between z-10 flex-shrink-0">
               <div className="flex items-center gap-2.5 text-xs text-slate-600 dark:text-zinc-300">
-                <span className="px-2.5 py-1 rounded-lg bg-indigo-50 dark:bg-indigo-950/40 text-indigo-700 dark:text-indigo-300 font-medium border border-indigo-200 dark:border-indigo-900/40">
-                  {NAV_ITEMS.find((n) => n.id === activeTab)?.label}
+                <span className="px-2.5 py-1 rounded-xl bg-indigo-50 dark:bg-indigo-950/60 text-indigo-700 dark:text-indigo-300 font-semibold border border-indigo-200/70 dark:border-indigo-900/50 flex items-center gap-1.5 shadow-2xs">
+                  <Sparkles className="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400" />
+                  <span>{NAV_ITEMS.find((n) => n.id === activeTab)?.label}</span>
                 </span>
-                {repoContext ? (
-                  <span className="truncate max-w-sm text-slate-900 dark:text-zinc-200 font-mono text-[11px]">
-                    Project: {repoContext.owner}/{repoContext.repo}
-                  </span>
-                ) : issueContext ? (
-                  <span className="truncate max-w-sm text-slate-900 dark:text-zinc-200 font-mono text-[11px]">
-                    Issue #{issueContext.number}: {issueContext.title}
-                  </span>
-                ) : submittedQuery ? (
-                  <span className="truncate max-w-sm text-slate-900 dark:text-zinc-200 font-mono text-[11px]">
-                    {submittedQuery}
-                  </span>
-                ) : null}
+                <span className="text-slate-300 dark:text-zinc-700">·</span>
+                <span className="truncate max-w-sm text-slate-700 dark:text-zinc-300 font-medium text-xs">
+                  {repoContext
+                    ? `${repoContext.owner}/${repoContext.repo}`
+                    : issueContext
+                    ? `#${issueContext.number} ${issueContext.title}`
+                    : submittedQuery}
+                </span>
+                <span className="hidden sm:inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-slate-100 dark:bg-zinc-800 text-[10px] font-mono text-slate-500 dark:text-zinc-400 border border-slate-200/60 dark:border-zinc-700/60">
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
+                  {settings.ollamaModel || 'gemma:2b'}
+                </span>
               </div>
 
               <div className="flex items-center gap-2">
                 <button
                   type="button"
                   onClick={toggleTheme}
-                  className="p-1.5 rounded-lg text-slate-500 dark:text-zinc-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-zinc-800 transition-colors cursor-pointer"
+                  className="p-1.5 rounded-xl text-slate-500 dark:text-zinc-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-zinc-800 transition-colors cursor-pointer border border-transparent hover:border-slate-200 dark:hover:border-zinc-700"
                   title={theme === 'dark' ? 'Switch to Light mode' : 'Switch to Dark mode'}
                 >
                   {theme === 'dark' ? (
@@ -1111,163 +1369,50 @@ export default function App() {
                 <button
                   type="button"
                   onClick={handleReset}
-                  className="inline-flex items-center gap-1.5 text-xs text-slate-600 dark:text-zinc-400 hover:text-slate-900 dark:hover:text-white px-3 py-1.5 rounded-xl hover:bg-slate-100 dark:hover:bg-zinc-800 transition-colors cursor-pointer border border-slate-200 dark:border-zinc-700"
+                  className="inline-flex items-center gap-1.5 text-xs font-medium text-slate-700 dark:text-zinc-300 hover:text-slate-900 dark:hover:text-white px-3 py-1.5 rounded-xl bg-white dark:bg-zinc-800 hover:bg-slate-100 dark:hover:bg-zinc-700/60 transition-colors cursor-pointer border border-slate-200 dark:border-zinc-700 shadow-2xs"
                 >
-                  <RotateCcw className="w-3.5 h-3.5" />
+                  <Plus className="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400" />
                   <span>New Chat</span>
                 </button>
               </div>
             </div>
 
             {/* Scrollable Message Thread */}
-            <div className="flex-1 overflow-y-auto px-6 py-6 flex flex-col items-center">
-              {/* Completed Message History */}
+            <div className="flex-1 min-h-0 overflow-y-auto px-4 sm:px-6 py-6 flex flex-col items-center w-full">
+              {/* Completed & Active Message Thread */}
               {messages.map((msg, idx) => (
-                msg.role === 'user' ? (
-                  <div key={idx} className="w-full max-w-3xl mb-4 flex justify-end">
-                    <div className="bg-indigo-600 text-white rounded-2xl px-4 py-2.5 text-xs sm:text-sm max-w-xl text-left shadow-xs">
-                      <p className="whitespace-pre-wrap">{msg.text}</p>
-                    </div>
-                  </div>
-                ) : (
-                  <div key={idx} className="w-full max-w-3xl mb-6 space-y-2">
-                    <div className="bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 rounded-2xl p-6 sm:p-8 text-left shadow-xs dark:shadow-2xl w-full">
-                      <div className="prose prose-slate dark:prose-invert max-w-none text-slate-800 dark:text-zinc-200 leading-relaxed">
-                        <ReactMarkdown
-                          components={{
-                            pre({ children, ...props }) {
-                              const child = Array.isArray(children) ? children[0] : children;
-                              if (child && child.props && /language-mermaid/.test(child.props.className || '')) {
-                                const code = String(child.props.children || '').replace(/\n$/, '');
-                                return <MermaidDiagram chart={code} isDark={theme === 'dark'} />;
-                              }
-                              return (
-                                <pre className="p-3 my-3 overflow-x-auto rounded-xl bg-slate-100 dark:bg-zinc-800 text-xs font-mono" {...props}>
-                                  {children}
-                                </pre>
-                              );
-                            },
-                            code({ className, children, ...props }) {
-                              const match = /language-(\w+)/.exec(className || '');
-                              if (match && match[1] === 'mermaid') {
-                                return <MermaidDiagram chart={String(children).replace(/\n$/, '')} isDark={theme === 'dark'} />;
-                              }
-                              return (
-                                <code className={className} {...props}>
-                                  {children}
-                                </code>
-                              );
-                            },
-                          }}
-                        >
-                          {msg.text}
-                        </ReactMarkdown>
-                      </div>
-                    </div>
-                    <div className="flex items-center justify-between px-1">
-                      <span className="text-[11px] text-slate-400 dark:text-zinc-500">
-                        {msg.timestamp || 'Saved'}
-                      </span>
-                      <div className="flex items-center gap-1.5">
-                        {/* Speak Button (Offline Web Speech API) */}
-                        <button
-                          type="button"
-                          onClick={() => handleSpeakMessage(msg.text, idx)}
-                          className="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium text-slate-600 dark:text-zinc-400 hover:text-slate-900 dark:hover:text-white bg-slate-100 dark:bg-zinc-800 hover:bg-slate-200 dark:hover:bg-zinc-700/60 rounded-lg transition-all cursor-pointer shadow-xs"
-                          title={speakingId === idx ? 'Stop speaking' : 'Read aloud with browser TTS'}
-                        >
-                          {speakingId === idx ? (
-                            <>
-                              <VolumeX className="w-3.5 h-3.5 text-indigo-500 animate-pulse" />
-                              <span className="text-indigo-600 dark:text-indigo-400">Stop</span>
-                            </>
-                          ) : (
-                            <>
-                              <Volume2 className="w-3.5 h-3.5 text-slate-400 dark:text-zinc-500" />
-                              <span>Speak</span>
-                            </>
-                          )}
-                        </button>
-
-                        {/* Copy Button */}
-                        <button
-                          type="button"
-                          onClick={() => handleCopyMessage(msg.text, idx)}
-                          className="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium text-slate-600 dark:text-zinc-400 hover:text-slate-900 dark:hover:text-white bg-slate-100 dark:bg-zinc-800 hover:bg-slate-200 dark:hover:bg-zinc-700/60 rounded-lg transition-all cursor-pointer shadow-xs"
-                        >
-                          {copiedId === idx ? (
-                            <>
-                              <Check className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
-                              <span className="text-emerald-600 dark:text-emerald-400">Copied!</span>
-                            </>
-                          ) : (
-                            <>
-                              <Copy className="w-3.5 h-3.5 text-slate-400 dark:text-zinc-500" />
-                              <span>Copy</span>
-                            </>
-                          )}
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-                )
-              ))}
-
-              {/* GitHub Data Loading Indicator */}
-              {isLoading && (
-                <div className="w-full max-w-3xl mt-2 mb-4 p-6 rounded-2xl bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 text-center shadow-xs">
-                  <div className="flex items-center justify-center space-x-3 text-slate-600 dark:text-zinc-300 text-xs">
-                    <span className="relative flex h-2.5 w-2.5">
-                      <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-indigo-500 opacity-75" />
-                      <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-indigo-600" />
-                    </span>
-                    <span className="font-mono text-slate-700 dark:text-zinc-200">
-                      {activeTab === 'repo'
-                        ? 'Fetching repository files and README...'
-                        : activeTab === 'issue'
-                        ? 'Fetching issue details from GitHub...'
-                        : 'Thinking...'}
-                    </span>
-                  </div>
-                </div>
-              )}
-
-              {/* Error Box */}
-              {error && (
-                <div className="w-full max-w-3xl mt-2 mb-4 rounded-xl border border-red-300 dark:border-red-900/40 bg-red-50 dark:bg-red-950/20 p-4 text-red-700 dark:text-red-300 text-sm text-left shadow-xs">
-                  <div className="flex items-center gap-2 font-medium mb-1 text-red-800 dark:text-red-200">
-                    <span className="w-1.5 h-1.5 rounded-full bg-red-500" />
-                    <span>Notice</span>
-                  </div>
-                  <p className="text-red-600 dark:text-red-300/80 text-xs leading-relaxed">{error}</p>
-                </div>
-              )}
-
-              {/* Currently Streaming Message */}
-              {prompt && (
-                <StreamingOutput
-                  prompt={prompt}
-                  system={systemPrompt}
-                  model={settings.ollamaModel}
-                  isDark={theme === 'dark'}
-                  onDone={handleStreamingDone}
+                <ChatMessageItem
+                  key={msg.id || idx}
+                  msg={msg}
+                  idx={idx}
+                  isLast={idx === messages.length - 1}
+                  isStreaming={isStreaming}
+                  initials={initials}
+                  ollamaModel={settings.ollamaModel}
+                  markdownComponents={markdownComponents}
+                  speakingId={speakingId}
+                  copiedId={copiedId}
                   onRegenerate={handleRegenerate}
+                  onSpeak={handleSpeakMessage}
+                  onCopy={handleCopyMessage}
                 />
-              )}
+              ))}
 
               <div ref={scrollBottomRef} />
             </div>
 
             {/* Bottom Docked Input Form for Follow-up Questions */}
-            <div className="w-full border-t border-slate-200 dark:border-zinc-800 bg-white/90 dark:bg-zinc-950/90 backdrop-blur-md p-4 flex justify-center z-10">
+            <div className="flex-shrink-0 w-full border-t border-slate-200/80 dark:border-zinc-800/80 bg-white/80 dark:bg-zinc-950/80 backdrop-blur-xl px-4 pt-3 pb-3 flex flex-col items-center justify-center z-10">
               <form onSubmit={handleSubmit} className="w-full max-w-3xl">
-                <div className="w-full bg-white dark:bg-zinc-900 border border-slate-300 dark:border-zinc-800 rounded-2xl flex items-center p-2 shadow-sm focus-within:ring-2 focus-within:ring-indigo-500/20 focus-within:border-indigo-500 dark:focus-within:border-indigo-500 transition-all">
+                <div className="w-full bg-white dark:bg-zinc-900 border border-slate-300/80 dark:border-zinc-800 rounded-2xl flex items-center p-2 shadow-sm focus-within:ring-2 focus-within:ring-indigo-500/20 focus-within:border-indigo-500 dark:focus-within:border-indigo-500 transition-colors">
                   {activeTab === 'git' ? (
-                    <Terminal className="w-4 h-4 text-slate-400 dark:text-zinc-500 ml-2.5 mr-1 flex-shrink-0 self-start mt-2" />
+                    <Terminal className="w-4 h-4 text-indigo-500 ml-2.5 mr-1 flex-shrink-0 self-start mt-2" />
                   ) : activeTab === 'chat' ? (
-                    <MessageCircle className="w-4 h-4 text-slate-400 dark:text-zinc-500 ml-2.5 flex-shrink-0" />
+                    <MessageCircle className="w-4 h-4 text-indigo-500 ml-2.5 flex-shrink-0" />
+                  ) : activeTab === 'repo' ? (
+                    <Code2 className="w-4 h-4 text-indigo-500 ml-2.5 flex-shrink-0" />
                   ) : (
-                    <Search className="w-4 h-4 text-slate-400 dark:text-zinc-500 ml-2.5 flex-shrink-0" />
+                    <GitBranch className="w-4 h-4 text-indigo-500 ml-2.5 flex-shrink-0" />
                   )}
 
                   {activeTab === 'git' ? (
@@ -1294,13 +1439,20 @@ export default function App() {
                   <button
                     type="submit"
                     disabled={isBusy || !inputVal.trim()}
-                    className="bg-indigo-600 hover:bg-indigo-500 text-white disabled:opacity-40 disabled:cursor-not-allowed p-2.5 rounded-xl transition-all cursor-pointer flex-shrink-0 font-medium shadow-xs ml-2"
+                    className="bg-gradient-to-r from-indigo-600 to-indigo-500 hover:from-indigo-500 hover:to-indigo-600 text-white disabled:opacity-40 disabled:cursor-not-allowed p-2.5 rounded-xl transition-all cursor-pointer flex-shrink-0 font-medium shadow-sm ml-2"
                     title="Send follow-up question"
                   >
                     <ArrowRight className="w-4 h-4" />
                   </button>
                 </div>
               </form>
+              <div className="flex items-center gap-3 text-[10px] text-slate-400 dark:text-zinc-500 mt-2 font-mono">
+                <span>Enter to send</span>
+                <span>·</span>
+                <span>Shift + Enter for new line</span>
+                <span>·</span>
+                <span className="text-emerald-600 dark:text-emerald-400 font-medium">100% Private & Local</span>
+              </div>
             </div>
           </div>
         )}
