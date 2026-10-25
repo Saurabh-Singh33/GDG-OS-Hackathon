@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import ReactMarkdown from 'react-markdown';
 import { Copy, Check, RotateCcw } from 'lucide-react';
 import { streamOllama } from '../ollama.js';
+import MermaidDiagram from './MermaidDiagram.jsx';
 
 /**
  * StreamingOutput component (Light & Dark Theme Adaptive)
@@ -11,6 +12,7 @@ import { streamOllama } from '../ollama.js';
  * - system (string): Optional system message
  * - model (string): Optional Ollama model name (default: 'gemma:2b')
  * - initialOutput (string): Pre-existing saved answer to display without re-streaming
+ * - isDark (boolean): Whether dark mode is active
  * - onDone (function): Callback invoked when streaming completes with the accumulated text
  * - onRegenerate (function): Optional callback to trigger a live re-generation
  */
@@ -19,6 +21,7 @@ export default function StreamingOutput({
   system,
   model = 'gemma:2b',
   initialOutput = '',
+  isDark = false,
   onDone,
   onRegenerate,
 }) {
@@ -138,7 +141,35 @@ export default function StreamingOutput({
         {/* Markdown Output with prose & prose-invert */}
         {output && (
           <div className="prose prose-slate dark:prose-invert max-w-none text-slate-800 dark:text-zinc-200 leading-relaxed">
-            <ReactMarkdown>{output}</ReactMarkdown>
+            <ReactMarkdown
+              components={{
+                pre({ children, ...props }) {
+                  const child = Array.isArray(children) ? children[0] : children;
+                  if (child && child.props && /language-mermaid/.test(child.props.className || '')) {
+                    const code = String(child.props.children || '').replace(/\n$/, '');
+                    return <MermaidDiagram chart={code} isDark={isDark} />;
+                  }
+                  return (
+                    <pre className="p-3 my-3 overflow-x-auto rounded-xl bg-slate-100 dark:bg-zinc-800 text-xs font-mono" {...props}>
+                      {children}
+                    </pre>
+                  );
+                },
+                code({ className, children, ...props }) {
+                  const match = /language-(\w+)/.exec(className || '');
+                  if (match && match[1] === 'mermaid') {
+                    return <MermaidDiagram chart={String(children).replace(/\n$/, '')} isDark={isDark} />;
+                  }
+                  return (
+                    <code className={className} {...props}>
+                      {children}
+                    </code>
+                  );
+                },
+              }}
+            >
+              {output}
+            </ReactMarkdown>
           </div>
         )}
 

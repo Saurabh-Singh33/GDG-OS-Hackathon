@@ -19,11 +19,14 @@ import {
   Moon,
   Copy,
   Check,
+  Volume2,
+  VolumeX,
 } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import { parseRepoUrl, fetchReadme, fetchTree, parseIssueUrl, fetchIssue } from './github.js';
 import StreamingOutput from './components/StreamingOutput.jsx';
 import SettingsModal from './components/SettingsModal.jsx';
+import MermaidDiagram from './components/MermaidDiagram.jsx';
 import {
   saveSession,
   updateSession,
@@ -72,6 +75,16 @@ export default function App() {
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [historySearch, setHistorySearch] = useState('');
   const [copiedId, setCopiedId] = useState(null);
+  const [speakingId, setSpeakingId] = useState(null);
+
+  // Clean up any ongoing TTS speech when component unmounts
+  useEffect(() => {
+    return () => {
+      if (typeof window !== 'undefined' && window.speechSynthesis) {
+        window.speechSynthesis.cancel();
+      }
+    };
+  }, []);
 
   // Multi-message chat thread state (persisted in database)
   const [messages, setMessages] = useState([]);
@@ -240,18 +253,54 @@ export default function App() {
     setSubmittedQuery('');
   };
 
+  const MERMAID_INSTRUCTION =
+    'If the user asks about a process, architecture, or flow (like Git branching, pull requests, or repo structure), include a Mermaid.js diagram inside a ```mermaid code block.';
+
   const getSystemPrompt = (tab = activeTab) => {
     if (tab === 'chat') {
-      return 'You are an encouraging, friendly open-source mentor. Answer beginner questions clearly, warmly, and accurately in simple terms. You can answer in any language requested (English, Hindi, etc.).';
+      return `You are an encouraging, friendly open-source mentor. Answer beginner questions clearly, warmly, and accurately in simple terms. You can answer in any language requested (English, Hindi, etc.). ${MERMAID_INSTRUCTION}`;
     }
     if (tab === 'git') {
       return settings.mentorTone === 'concise'
-        ? 'You are a terse Git mentor. Answer in 2 sentences max, then give the exact command needed.'
-        : 'You are a Git mentor for absolute beginners. Answer in 3 sentences max, then give the exact command they need.';
+        ? `You are a terse Git mentor. Answer in 2 sentences max, then give the exact command needed. ${MERMAID_INSTRUCTION}`
+        : `You are a Git mentor for absolute beginners. Answer in 3 sentences max, then give the exact command they need. ${MERMAID_INSTRUCTION}`;
     }
     return settings.mentorTone === 'concise'
-      ? 'You are a direct open-source mentor. Give concise bullet points and direct commands.'
-      : 'You are a patient open-source mentor. Explain things for a complete beginner. Never assume they know Git. Be concise and use bullet points.';
+      ? `You are a direct open-source mentor. Give concise bullet points and direct commands. ${MERMAID_INSTRUCTION}`
+      : `You are a patient open-source mentor. Explain things for a complete beginner. Never assume they know Git. Be concise and use bullet points. ${MERMAID_INSTRUCTION}`;
+  };
+
+  const handleSpeakMessage = (text, id) => {
+    if (typeof window === 'undefined' || !window.speechSynthesis) return;
+
+    if (speakingId === id) {
+      window.speechSynthesis.cancel();
+      setSpeakingId(null);
+      return;
+    }
+
+    window.speechSynthesis.cancel();
+
+    // Clean text: strip markdown symbols and diagram code blocks for natural speech
+    const cleanText = text
+      .replace(/```mermaid[\s\S]*?```/gi, ' [Visual workflow diagram omitted] ')
+      .replace(/```[\s\S]*?```/g, ' [Code block omitted] ')
+      .replace(/`([^`]+)`/g, '$1')
+      .replace(/[#*_~>]/g, '')
+      .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1')
+      .trim();
+
+    if (!cleanText) return;
+
+    const utterance = new SpeechSynthesisUtterance(cleanText);
+    utterance.rate = 1.0;
+    utterance.pitch = 1.0;
+
+    utterance.onend = () => setSpeakingId(null);
+    utterance.onerror = () => setSpeakingId(null);
+
+    setSpeakingId(id);
+    window.speechSynthesis.speak(utterance);
   };
 
   /**
@@ -1084,30 +1133,81 @@ export default function App() {
                   <div key={idx} className="w-full max-w-3xl mb-6 space-y-2">
                     <div className="bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 rounded-2xl p-6 sm:p-8 text-left shadow-xs dark:shadow-2xl w-full">
                       <div className="prose prose-slate dark:prose-invert max-w-none text-slate-800 dark:text-zinc-200 leading-relaxed">
-                        <ReactMarkdown>{msg.text}</ReactMarkdown>
+                        <ReactMarkdown
+                          components={{
+                            pre({ children, ...props }) {
+                              const child = Array.isArray(children) ? children[0] : children;
+                              if (child && child.props && /language-mermaid/.test(child.props.className || '')) {
+                                const code = String(child.props.children || '').replace(/\n$/, '');
+                                return <MermaidDiagram chart={code} isDark={theme === 'dark'} />;
+                              }
+                              return (
+                                <pre className="p-3 my-3 overflow-x-auto rounded-xl bg-slate-100 dark:bg-zinc-800 text-xs font-mono" {...props}>
+                                  {children}
+                                </pre>
+                              );
+                            },
+                            code({ className, children, ...props }) {
+                              const match = /language-(\w+)/.exec(className || '');
+                              if (match && match[1] === 'mermaid') {
+                                return <MermaidDiagram chart={String(children).replace(/\n$/, '')} isDark={theme === 'dark'} />;
+                              }
+                              return (
+                                <code className={className} {...props}>
+                                  {children}
+                                </code>
+                              );
+                            },
+                          }}
+                        >
+                          {msg.text}
+                        </ReactMarkdown>
                       </div>
                     </div>
                     <div className="flex items-center justify-between px-1">
                       <span className="text-[11px] text-slate-400 dark:text-zinc-500">
                         {msg.timestamp || 'Saved'}
                       </span>
-                      <button
-                        type="button"
-                        onClick={() => handleCopyMessage(msg.text, idx)}
-                        className="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium text-slate-600 dark:text-zinc-400 hover:text-slate-900 dark:hover:text-white bg-slate-100 dark:bg-zinc-800 hover:bg-slate-200 dark:hover:bg-zinc-700/60 rounded-lg transition-all cursor-pointer shadow-xs"
-                      >
-                        {copiedId === idx ? (
-                          <>
-                            <Check className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
-                            <span className="text-emerald-600 dark:text-emerald-400">Copied!</span>
-                          </>
-                        ) : (
-                          <>
-                            <Copy className="w-3.5 h-3.5 text-slate-400 dark:text-zinc-500" />
-                            <span>Copy</span>
-                          </>
-                        )}
-                      </button>
+                      <div className="flex items-center gap-1.5">
+                        {/* Speak Button (Offline Web Speech API) */}
+                        <button
+                          type="button"
+                          onClick={() => handleSpeakMessage(msg.text, idx)}
+                          className="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium text-slate-600 dark:text-zinc-400 hover:text-slate-900 dark:hover:text-white bg-slate-100 dark:bg-zinc-800 hover:bg-slate-200 dark:hover:bg-zinc-700/60 rounded-lg transition-all cursor-pointer shadow-xs"
+                          title={speakingId === idx ? 'Stop speaking' : 'Read aloud with browser TTS'}
+                        >
+                          {speakingId === idx ? (
+                            <>
+                              <VolumeX className="w-3.5 h-3.5 text-indigo-500 animate-pulse" />
+                              <span className="text-indigo-600 dark:text-indigo-400">Stop</span>
+                            </>
+                          ) : (
+                            <>
+                              <Volume2 className="w-3.5 h-3.5 text-slate-400 dark:text-zinc-500" />
+                              <span>Speak</span>
+                            </>
+                          )}
+                        </button>
+
+                        {/* Copy Button */}
+                        <button
+                          type="button"
+                          onClick={() => handleCopyMessage(msg.text, idx)}
+                          className="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium text-slate-600 dark:text-zinc-400 hover:text-slate-900 dark:hover:text-white bg-slate-100 dark:bg-zinc-800 hover:bg-slate-200 dark:hover:bg-zinc-700/60 rounded-lg transition-all cursor-pointer shadow-xs"
+                        >
+                          {copiedId === idx ? (
+                            <>
+                              <Check className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
+                              <span className="text-emerald-600 dark:text-emerald-400">Copied!</span>
+                            </>
+                          ) : (
+                            <>
+                              <Copy className="w-3.5 h-3.5 text-slate-400 dark:text-zinc-500" />
+                              <span>Copy</span>
+                            </>
+                          )}
+                        </button>
+                      </div>
                     </div>
                   </div>
                 )
@@ -1149,6 +1249,7 @@ export default function App() {
                   prompt={prompt}
                   system={systemPrompt}
                   model={settings.ollamaModel}
+                  isDark={theme === 'dark'}
                   onDone={handleStreamingDone}
                   onRegenerate={handleRegenerate}
                 />
